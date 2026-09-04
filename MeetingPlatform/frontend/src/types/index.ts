@@ -53,6 +53,11 @@ export interface VideoStatusPayload {
   is_camera_off: boolean;
 }
 
+export interface CaptionPayload {
+  text: string;
+  is_final: boolean;
+}
+
 export interface WebRTCPayload {
   sdp?: string;
   type?: RTCSdpType;
@@ -70,6 +75,7 @@ export type SignalingMessageType =
   | "ice_candidate"
   | "mute_status"
   | "video_status"
+  | "caption"
   | "error";
 
 export interface SignalingMessage {
@@ -77,7 +83,7 @@ export interface SignalingMessage {
   from_user_id?: string;
   from_user_name?: string;
   target_user_id?: string;
-  payload: RoomStatePayload | ParticipantJoinedPayload | ParticipantLeftPayload | MuteStatusPayload | VideoStatusPayload | WebRTCPayload | { message: string };
+  payload: RoomStatePayload | ParticipantJoinedPayload | ParticipantLeftPayload | MuteStatusPayload | VideoStatusPayload | CaptionPayload | WebRTCPayload | { message: string };
 }
 
 // =========================================================
@@ -91,6 +97,7 @@ export interface RemoteParticipant {
   isSpeaking: boolean;
   isCameraOff: boolean;
   stream?: MediaStream;
+  caption?: string;
 }
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected" | "error";

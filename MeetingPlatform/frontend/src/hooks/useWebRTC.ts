@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { SignalingClient } from "@/lib/websocket";
 import { PeerConnectionManager, getLocalMediaStream } from "@/lib/webrtc";
+import { LiveCaptioner, isSpeechRecognitionSupported } from "@/lib/liveCaptioner";
 import { meetings } from "@/lib/api";
 import type {
   ConnectionStatus,
@@ -16,7 +17,10 @@ import type {
   WebRTCPayload,
   MuteStatusPayload,
   VideoStatusPayload,
+  CaptionPayload,
 } from "@/types";
+
+const CAPTION_CLEAR_MS = 4000;
 
 export function useWebRTC(meetingCode: string, currentUserId: string | undefined, currentUserName: string | undefined) {
   const router = useRouter();
@@ -35,6 +39,12 @@ export function useWebRTC(meetingCode: string, currentUserId: string | undefined
   const [hasCamera, setHasCamera] = useState(false);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [micError, setMicError] = useState<string | null>(null);
+  const [captionsEnabled, setCaptionsEnabled] = useState(false);
+  const [localCaption, setLocalCaption] = useState("");
+
+  const captionerRef = useRef<LiveCaptioner | null>(null);
+  const localCaptionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const captionTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   // -------------------------------------------------------
   // Helper: update a participant's field
@@ -43,6 +53,23 @@ export function useWebRTC(meetingCode: string, currentUserId: string | undefined
     setParticipants(prev =>
       prev.map(p => p.user_id === userId ? { ...p, ...updates } : p)
     );
+  }, []);
+
+  // Clears a participant's caption a few seconds after their last transcript
+  // update — mirrors how live captions disappear once someone stops talking.
+  const scheduleCaptionClear = useCallback((userId: string) => {
+    const timers = captionTimersRef.current;
+    const existing = timers.get(userId);
+    if (existing) clearTimeout(existing);
+    timers.set(userId, setTimeout(() => {
+      updateParticipant(userId, { caption: "" });
+      timers.delete(userId);
+    }, CAPTION_CLEAR_MS));
+  }, [updateParticipant]);
+
+  const scheduleLocalCaptionClear = useCallback(() => {
+    if (localCaptionTimerRef.current) clearTimeout(localCaptionTimerRef.current);
+    localCaptionTimerRef.current = setTimeout(() => setLocalCaption(""), CAPTION_CLEAR_MS);
   }, []);
 
   // -------------------------------------------------------
@@ -188,6 +215,16 @@ export function useWebRTC(meetingCode: string, currentUserId: string | undefined
           updateParticipant(msg.from_user_id!, { isCameraOff: payload.is_camera_off });
         });
 
+        // caption from peers — live subtitle text (interim or final)
+        signaling.on("caption", (msg: SignalingMessage) => {
+          if (destroyed) return;
+          const payload = msg.payload as CaptionPayload;
+          const fromUserId = msg.from_user_id!;
+          console.log("[Captions] received from peer", fromUserId, payload);
+          updateParticipant(fromUserId, { caption: payload.text });
+          scheduleCaptionClear(fromUserId);
+        });
+
         // Connection status
         signaling.on("open" as any, () => setConnectionStatus("connected"));
         signaling.on("close" as any, () => {
@@ -225,7 +262,42 @@ export function useWebRTC(meetingCode: string, currentUserId: string | undefined
       localStreamRef.current?.getTracks().forEach(t => t.stop());
       localStreamRef.current = null;
     };
-  }, [meetingCode, currentUserId, currentUserName, updateParticipant]);
+  }, [meetingCode, currentUserId, currentUserName, updateParticipant, scheduleCaptionClear]);
+
+  // Live captions — runs the browser's speech recognition on the local mic
+  // and broadcasts transcripts as "caption" signaling messages. Only active
+  // while explicitly enabled and unmuted (recognizing a muted mic makes no
+  // sense, and it avoids surprising anyone with always-on transcription).
+  useEffect(() => {
+    console.log("[Captions] effect run", { captionsEnabled, isMuted, hasLocalStream: !!localStream });
+    if (!captionsEnabled || isMuted || !localStream) {
+      captionerRef.current?.stop();
+      captionerRef.current = null;
+      setLocalCaption("");
+      return;
+    }
+
+    const captioner = new LiveCaptioner(
+      (text, isFinal) => {
+        console.log("[Captions] local result, sending", { text, isFinal, wsOpen: signalingRef.current?.isConnected });
+        setLocalCaption(text);
+        scheduleLocalCaptionClear();
+        signalingRef.current?.send("caption", { text, is_final: isFinal });
+      },
+      (error) => {
+        console.warn("[Captions] captioner error", error);
+        toast.error(error);
+        setCaptionsEnabled(false);
+      }
+    );
+    captionerRef.current = captioner;
+    captioner.start();
+
+    return () => {
+      captioner.stop();
+      captionerRef.current = null;
+    };
+  }, [captionsEnabled, isMuted, localStream, scheduleLocalCaptionClear]);
 
   // Handle tab close / navigation away
   useEffect(() => {
@@ -256,10 +328,24 @@ export function useWebRTC(meetingCode: string, currentUserId: string | undefined
     signalingRef.current?.send("video_status", { is_camera_off: nowOff });
   }, []);
 
+  const toggleCaptions = useCallback(() => {
+    setCaptionsEnabled(prev => {
+      const next = !prev;
+      console.log("[Captions] toggle clicked", { prev, next, supported: isSpeechRecognitionSupported() });
+      if (next && !isSpeechRecognitionSupported()) {
+        toast.error("Live captions aren't supported in this browser — try Chrome or Edge.");
+        return prev;
+      }
+      return next;
+    });
+  }, []);
+
   const leaveRoom = useCallback(async () => {
     signalingRef.current?.disconnect();
     pcManagerRef.current?.closeAll();
     localStreamRef.current?.getTracks().forEach(t => t.stop());
+    captionerRef.current?.stop();
+    captionerRef.current = null;
     if (currentUserId) {
       try {
         await meetings.leave(meetingCode, currentUserId);
@@ -277,8 +363,11 @@ export function useWebRTC(meetingCode: string, currentUserId: string | undefined
     hasCamera,
     connectionStatus,
     micError,
+    captionsEnabled,
+    localCaption,
     toggleMute,
     toggleCamera,
+    toggleCaptions,
     leaveRoom,
   };
 }

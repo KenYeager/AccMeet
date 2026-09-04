@@ -13,7 +13,7 @@ router = APIRouter()
 RELAY_TYPES = {"offer", "answer", "ice_candidate"}
 
 # Message types that get broadcast to all peers in the room
-BROADCAST_TYPES = {"mute_status", "video_status"}
+BROADCAST_TYPES = {"mute_status", "video_status", "caption"}
 
 
 @router.websocket("/ws/{meeting_code}")

@@ -6,6 +6,8 @@ import Link from "next/link";
 import {
   AlertTriangle,
   ArrowLeft,
+  Captions,
+  CaptionsOff,
   Check,
   Copy,
   Crown,
@@ -250,8 +252,11 @@ export default function MeetingRoomPage() {
     hasCamera,
     connectionStatus,
     micError,
+    captionsEnabled,
+    localCaption,
     toggleMute,
     toggleCamera,
+    toggleCaptions,
     leaveRoom,
   } = useWebRTC(meetingCode, webrtcUserId, webrtcUserName);
 
@@ -495,6 +500,18 @@ export default function MeetingRoomPage() {
         )}
       </div>
 
+      {/* Live captions */}
+      {captionsEnabled && (
+        <CaptionBar
+          entries={[
+            ...(localCaption ? [{ id: "self", name: `${userName} (you)`, text: localCaption }] : []),
+            ...participants
+              .filter(p => p.caption)
+              .map(p => ({ id: p.user_id, name: p.user_name, text: p.caption! })),
+          ]}
+        />
+      )}
+
       {/* Controls */}
       <div
         className="container-lg fade-in"
@@ -516,9 +533,48 @@ export default function MeetingRoomPage() {
         >
           {isCameraOff ? <VideoOff size={24} /> : <Video size={24} />}
         </button>
+        <button
+          className={`mute-btn ${captionsEnabled ? "mute-btn-active" : "mute-btn-muted"}`}
+          onClick={toggleCaptions}
+          title={captionsEnabled ? "Turn off live captions" : "Turn on live captions"}
+        >
+          {captionsEnabled ? <Captions size={24} /> : <CaptionsOff size={24} />}
+        </button>
         <button className="btn btn-danger btn-icon-lg" onClick={leaveRoom} title="Leave meeting">
           <PhoneOff size={22} />
         </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Fixed subtitle bar showing whoever currently has live caption text —
+ * cleared a few seconds after each speaker goes quiet (see useWebRTC).
+ */
+function CaptionBar({ entries }: { entries: { id: string; name: string; text: string }[] }) {
+  if (entries.length === 0) return null;
+  return (
+    <div className="container-lg fade-in" style={{ display: "flex", justifyContent: "center", padding: "0 0 0.75rem" }}>
+      <div
+        style={{
+          maxWidth: "48rem",
+          width: "100%",
+          background: "rgba(6, 11, 24, 0.75)",
+          backdropFilter: "blur(6px)",
+          borderRadius: "0.75rem",
+          padding: "0.75rem 1.25rem",
+          display: "flex",
+          flexDirection: "column",
+          gap: "0.25rem",
+        }}
+      >
+        {entries.map(entry => (
+          <p key={entry.id} style={{ fontSize: "0.9375rem", lineHeight: 1.4, color: "white", margin: 0 }}>
+            <span style={{ fontWeight: 600, color: "var(--color-blue-400)" }}>{entry.name}: </span>
+            {entry.text}
+          </p>
+        ))}
       </div>
     </div>
   );
