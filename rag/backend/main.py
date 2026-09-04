@@ -30,6 +30,18 @@ class IngestBatchRequest(BaseModel):
 class TranscriptInput(BaseModel):
     chunk: str
 
+def _extract_text(content) -> str:
+    """Gemini can return message.content as a string or a list of content blocks."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(
+            block.get("text", "") if isinstance(block, dict) else str(block)
+            for block in content
+            if not isinstance(block, dict) or block.get("type") == "text"
+        )
+    return str(content)
+
 @app.get("/")
 def health_check():
     return {"status": "ok", "service": "meeting-copilot-rag"}
@@ -75,7 +87,7 @@ async def process_transcript_chunk(payload: TranscriptInput):
             if msg.type == "tool":
                 tool_output = msg.content
 
-        final_content = messages[-1].content if messages else ""
+        final_content = _extract_text(messages[-1].content) if messages else ""
 
         return {
             "hud_triggered": tool_executed,

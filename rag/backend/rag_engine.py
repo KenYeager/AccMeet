@@ -1,4 +1,5 @@
 import os
+import certifi
 from pathlib import Path
 from typing import List
 from dotenv import load_dotenv
@@ -11,7 +12,7 @@ from langchain_mongodb import MongoDBAtlasVectorSearch
 env_path = Path(__file__).resolve().parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
-MONGO_URI = os.getenv("MONGO_URI")
+MONGO_URI = os.getenv("MONGO_URI") or os.getenv("MONGODB_URI")
 DB_NAME = os.getenv("DB_NAME", "meeting_copilot")
 COLLECTION_NAME = os.getenv("COLLECTION_NAME", "lore_embeddings")
 INDEX_NAME = os.getenv("INDEX_NAME", "vector_index")
@@ -52,7 +53,7 @@ embeddings = GeminiOfficialEmbeddings(
     model="gemini-embedding-2"
 )
 
-client = MongoClient(MONGO_URI)
+client = MongoClient(MONGO_URI, tlsCAFile=certifi.where())
 collection = client[DB_NAME][COLLECTION_NAME]
 
 # 4. Initialize MongoDB Atlas Vector Store & Retriever
