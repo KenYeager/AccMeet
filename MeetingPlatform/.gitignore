@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Next.js
+frontend/.next/
+frontend/out/
+frontend/next-env.d.ts
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Env files
+.env
+.env.local
+*.env.*.local
+
+# OS
+.DS_Store
+
+# Editors
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+
+# The shared repo-root .gitignore has a broad `lib/` rule for Python venv
+# artifacts; it unintentionally matches this project's own frontend/src/lib/.
+!frontend/src/lib/

@@ -1,0 +1,58 @@
+services:
+  mongodb:
+    image: mongo:7
+    container_name: meetingplatform_mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: meetingplatform
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: meetingplatform_backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/app:/app/app
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    environment:
+      MONGO_URI: mongodb://mongodb:27017/meetingplatform
+      CORS_ORIGINS: http://localhost:3000
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: meetingplatform_frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+    depends_on:
+      - backend
+    environment:
+      # Used client-side (in the browser) — must be reachable from the host
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NEXT_PUBLIC_WS_URL: ws://localhost:8000
+      # Used server-side by the Next.js rewrite proxy, which runs inside this
+      # container — must use the Docker Compose service name, not localhost
+      INTERNAL_API_URL: http://backend:8000
+    restart: unless-stopped
+
+volumes:
+  mongo_data:
+    name: meetingplatform_mongo_data
