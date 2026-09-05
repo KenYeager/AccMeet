@@ -125,3 +125,21 @@ export interface RagQueryResponse {
   hud_card_data: string | null;
   assistant_response: string;
 }
+
+// =========================================================
+// Conversation memory — the patient-only "context bubble" /
+// "history bubble" feature (see lib/api.ts's `conversation` client).
+// Storage is plain per-dyad .txt files on rag/backend, not a database.
+// =========================================================
+
+export interface ConversationChunkResponse {
+  current_context: string;
+  summary_line: string;
+  session_summary: string;
+}
+
+export interface ConversationHistoryEntry {
+  other_name: string;
+  timestamp: string;
+  summary: string;
+}

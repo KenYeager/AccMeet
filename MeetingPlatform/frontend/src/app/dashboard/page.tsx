@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Mic, Plus, ArrowRight, Loader2, Pencil, Check } from "lucide-react";
+import { Mic, Plus, ArrowRight, Loader2, Pencil, Check, HeartPulse } from "lucide-react";
 import { useIdentity } from "@/hooks/useIdentity";
 import { meetings, ApiError } from "@/lib/api";
 import toast from "react-hot-toast";
@@ -13,7 +13,7 @@ function getInitials(name: string) {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { userId, userName, setUserName, isReady } = useIdentity();
+  const { userId, userName, setUserName, isPatientDevice, setIsPatientDevice, isReady } = useIdentity();
   const [nameInput, setNameInput] = useState("");
   const [isEditingName, setIsEditingName] = useState(false);
   const [joinCode, setJoinCode] = useState("");
@@ -92,7 +92,7 @@ export default function DashboardPage() {
       const meeting = await meetings.create(identity);
       await meetings.join(meeting.meeting_code, identity);
       toast.success(`Meeting ${meeting.meeting_code} created!`);
-      router.push(`/meeting/${meeting.meeting_code}`);
+      router.push(`/meeting/${meeting.meeting_code}${isPatientDevice ? "?patient=1" : ""}`);
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : "Failed to create meeting";
       toast.error(msg);
@@ -112,7 +112,7 @@ export default function DashboardPage() {
     setIsJoining(true);
     try {
       await meetings.join(code, { user_id: userId, user_name: userName });
-      router.push(`/meeting/${code}`);
+      router.push(`/meeting/${code}${isPatientDevice ? "?patient=1" : ""}`);
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : "Failed to join meeting";
       toast.error(msg);
@@ -206,6 +206,36 @@ export default function DashboardPage() {
             Start a new meeting or join one with a code.
           </p>
         </div>
+
+        {/* Device-level setting (persisted, not per-meeting) — "this device
+            belongs to a memory-care patient" so every meeting it creates or
+            joins automatically gets the context/history bubbles, with no
+            need to hand-edit a link. */}
+        <label
+          className="glass-card fade-in"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.75rem",
+            padding: "1rem 1.25rem",
+            marginBottom: "1.5rem",
+            cursor: "pointer",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={isPatientDevice}
+            onChange={e => setIsPatientDevice(e.target.checked)}
+            style={{ width: "1.125rem", height: "1.125rem", cursor: "pointer", flexShrink: 0 }}
+          />
+          <HeartPulse size={18} color="var(--color-blue-400)" style={{ flexShrink: 0 }} />
+          <div>
+            <div style={{ fontSize: "0.9375rem", fontWeight: 600 }}>This is a memory-care patient&apos;s device</div>
+            <div style={{ fontSize: "0.8125rem", color: "var(--color-text-secondary)" }}>
+              Every meeting created or joined from here will show the live context bubble and conversation history.
+            </div>
+          </div>
+        </label>
 
         <div style={{
           display: "grid",

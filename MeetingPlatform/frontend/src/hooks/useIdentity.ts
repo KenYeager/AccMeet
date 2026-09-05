@@ -1,7 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { getUserId, getUserName, setUserName as persistUserName } from "@/lib/identity";
+import {
+  getUserId,
+  getUserName,
+  setUserName as persistUserName,
+  getIsPatientDevice,
+  setIsPatientDevice as persistIsPatientDevice,
+} from "@/lib/identity";
 
 /**
  * Reads/writes the guest identity from localStorage. `isReady` guards the
@@ -12,11 +18,13 @@ import { getUserId, getUserName, setUserName as persistUserName } from "@/lib/id
 export function useIdentity() {
   const [userId, setUserId] = useState("");
   const [userName, setUserNameState] = useState("");
+  const [isPatientDevice, setIsPatientDeviceState] = useState(false);
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
     setUserId(getUserId());
     setUserNameState(getUserName());
+    setIsPatientDeviceState(getIsPatientDevice());
     setIsReady(true);
   }, []);
 
@@ -24,5 +32,10 @@ export function useIdentity() {
     setUserNameState(persistUserName(name));
   }, []);
 
-  return { userId, userName, setUserName, isReady };
+  const setIsPatientDevice = useCallback((value: boolean) => {
+    persistIsPatientDevice(value);
+    setIsPatientDeviceState(value);
+  }, []);
+
+  return { userId, userName, setUserName, isPatientDevice, setIsPatientDevice, isReady };
 }

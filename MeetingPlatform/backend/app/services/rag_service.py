@@ -64,6 +64,76 @@ async def ingest_lore(items: list[dict]) -> dict:
     return response.json()
 
 
+async def send_conversation_chunk(
+    patient_id: str, other_id: str, other_name: str, meeting_code: str, text: str
+) -> dict:
+    """Forwards a ~30s dialogue chunk to rag's POST /api/conversation/chunk."""
+    client = _get_client()
+    try:
+        response = await client.post(
+            "/api/conversation/chunk",
+            json={
+                "patient_id": patient_id,
+                "other_id": other_id,
+                "other_name": other_name,
+                "meeting_code": meeting_code,
+                "text": text,
+            },
+            timeout=httpx.Timeout(10.0),
+        )
+    except httpx.ConnectError as e:
+        raise RagServiceUnavailableError() from e
+    except httpx.TimeoutException as e:
+        raise RagServiceTimeoutError() from e
+
+    if response.status_code >= 400:
+        raise RagServiceError(response.status_code, _extract_detail(response))
+    return response.json()
+
+
+async def finalize_conversation(patient_id: str, other_id: str, other_name: str, meeting_code: str) -> dict:
+    """Forwards to rag's POST /api/conversation/finalize — called on leaving the call."""
+    client = _get_client()
+    try:
+        response = await client.post(
+            "/api/conversation/finalize",
+            json={
+                "patient_id": patient_id,
+                "other_id": other_id,
+                "other_name": other_name,
+                "meeting_code": meeting_code,
+            },
+            timeout=httpx.Timeout(5.0),
+        )
+    except httpx.ConnectError as e:
+        raise RagServiceUnavailableError() from e
+    except httpx.TimeoutException as e:
+        raise RagServiceTimeoutError() from e
+
+    if response.status_code >= 400:
+        raise RagServiceError(response.status_code, _extract_detail(response))
+    return response.json()
+
+
+async def get_conversation_history(patient_id: str, other_id: str, other_name: str) -> dict:
+    """Forwards to rag's GET /api/conversation/history."""
+    client = _get_client()
+    try:
+        response = await client.get(
+            "/api/conversation/history",
+            params={"patient_id": patient_id, "other_id": other_id, "other_name": other_name},
+            timeout=httpx.Timeout(10.0),
+        )
+    except httpx.ConnectError as e:
+        raise RagServiceUnavailableError() from e
+    except httpx.TimeoutException as e:
+        raise RagServiceTimeoutError() from e
+
+    if response.status_code >= 400:
+        raise RagServiceError(response.status_code, _extract_detail(response))
+    return response.json()
+
+
 async def query_chunk(chunk: str) -> dict:
     """Forwards to rag's POST /api/agent/process-chunk — can take up to ~7s (two
     sequential Gemini calls) when the agent decides to look something up."""

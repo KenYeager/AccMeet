@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import get_settings
 from .database import connect_db, close_db
 from .services.rag_service import connect_rag_client, close_rag_client
-from .routers import meetings, websocket, rag
+from .routers import meetings, websocket, rag, conversation
 
 
 @asynccontextmanager
@@ -39,6 +39,7 @@ app.add_middleware(
 app.include_router(meetings.router, prefix="/api/meetings", tags=["meetings"])
 app.include_router(websocket.router, tags=["websocket"])
 app.include_router(rag.router, prefix="/api/rag", tags=["rag"])
+app.include_router(conversation.router, prefix="/api/conversation", tags=["conversation"])
 
 
 @app.get("/health")

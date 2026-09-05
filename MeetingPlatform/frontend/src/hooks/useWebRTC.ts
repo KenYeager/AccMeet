@@ -23,7 +23,15 @@ import type {
 
 const CAPTION_CLEAR_MS = 4000;
 
-export function useWebRTC(meetingCode: string, currentUserId: string | undefined, currentUserName: string | undefined) {
+export function useWebRTC(
+  meetingCode: string,
+  currentUserId: string | undefined,
+  currentUserName: string | undefined,
+  // Fires for every FINAL caption, local or peer — (speakerUserId, text).
+  // Read via a ref (see onFinalCaptionRef below) so passing a fresh inline
+  // function each render never tears down/restarts the connection effect.
+  onFinalCaption?: (fromUserId: string, text: string) => void,
+) {
   const router = useRouter();
 
   // Stable refs for signaling and peer connections (not reactive)
@@ -58,6 +66,9 @@ export function useWebRTC(meetingCode: string, currentUserId: string | undefined
   const retrievalEnabledRef = useRef(false);
   useEffect(() => { ingestionEnabledRef.current = ingestionEnabled; }, [ingestionEnabled]);
   useEffect(() => { retrievalEnabledRef.current = retrievalEnabled; }, [retrievalEnabled]);
+
+  const onFinalCaptionRef = useRef(onFinalCaption);
+  useEffect(() => { onFinalCaptionRef.current = onFinalCaption; }, [onFinalCaption]);
 
   // Guards against a slower, older retrieval call overwriting a newer one's
   // result if two finalized captions fire close together.
@@ -270,6 +281,7 @@ export function useWebRTC(meetingCode: string, currentUserId: string | undefined
           updateParticipant(fromUserId, { caption: payload.text });
           scheduleCaptionClear(fromUserId);
           if (payload.is_final && retrievalEnabledRef.current) runRetrieval(payload.text);
+          if (payload.is_final) onFinalCaptionRef.current?.(fromUserId, payload.text);
         });
 
         // Connection status
@@ -332,6 +344,7 @@ export function useWebRTC(meetingCode: string, currentUserId: string | undefined
         signalingRef.current?.send("caption", { text, is_final: isFinal });
         if (isFinal && ingestionEnabledRef.current) runIngestion(text);
         if (isFinal && retrievalEnabledRef.current) runRetrieval(text);
+        if (isFinal && currentUserId) onFinalCaptionRef.current?.(currentUserId, text);
       },
       (error) => {
         console.warn("[Captions] captioner error", error);

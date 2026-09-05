@@ -1,4 +1,12 @@
-import type { MeetingWithParticipants, Participant, RagIngestItem, RagIngestResponse, RagQueryResponse } from "@/types";
+import type {
+  MeetingWithParticipants,
+  Participant,
+  RagIngestItem,
+  RagIngestResponse,
+  RagQueryResponse,
+  ConversationChunkResponse,
+  ConversationHistoryEntry,
+} from "@/types";
 
 const API_BASE = "/api"; // Proxied by Next.js rewrites to backend
 
@@ -77,6 +85,41 @@ export const rag = {
 
   query: (chunk: string) =>
     request<RagQueryResponse>("/rag/query", { method: "POST", body: JSON.stringify({ chunk }) }),
+};
+
+// =========================================================
+// Conversation memory — patient-only "context bubble" / "history
+// bubble" feature. Proxied through to rag/backend's per-dyad .txt
+// file storage (not a database — see conversation_memory.py).
+// =========================================================
+export const conversation = {
+  sendChunk: (patientId: string, otherId: string, otherName: string, meetingCode: string, text: string) =>
+    request<ConversationChunkResponse>("/conversation/chunk", {
+      method: "POST",
+      body: JSON.stringify({
+        patient_id: patientId,
+        other_id: otherId,
+        other_name: otherName,
+        meeting_code: meetingCode,
+        text,
+      }),
+    }),
+
+  finalize: (patientId: string, otherId: string, otherName: string, meetingCode: string) =>
+    request<{ status: string }>("/conversation/finalize", {
+      method: "POST",
+      body: JSON.stringify({
+        patient_id: patientId,
+        other_id: otherId,
+        other_name: otherName,
+        meeting_code: meetingCode,
+      }),
+    }),
+
+  getHistory: (patientId: string, otherId: string, otherName: string) =>
+    request<{ entries: ConversationHistoryEntry[] }>(
+      `/conversation/history?patient_id=${encodeURIComponent(patientId)}&other_id=${encodeURIComponent(otherId)}&other_name=${encodeURIComponent(otherName)}`
+    ),
 };
 
 export { ApiError };

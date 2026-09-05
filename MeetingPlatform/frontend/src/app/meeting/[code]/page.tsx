@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   AlertTriangle,
   ArrowLeft,
+  BookOpen,
   BrainCircuit,
   Captions,
   CaptionsOff,
@@ -19,6 +20,7 @@ import {
   MicOff,
   PhoneOff,
   ScanSearch,
+  Sparkles,
   Users,
   Video,
   VideoOff,
@@ -27,9 +29,10 @@ import {
 import toast from "react-hot-toast";
 import { useIdentity } from "@/hooks/useIdentity";
 import { useWebRTC } from "@/hooks/useWebRTC";
+import { useConversationMemory } from "@/hooks/useConversationMemory";
 import { useSpeakingDetection } from "@/hooks/useSpeakingDetection";
 import { meetings, ApiError } from "@/lib/api";
-import type { ConnectionStatus, RagQueryResponse, RemoteParticipant } from "@/types";
+import type { ConnectionStatus, ConversationHistoryEntry, RagQueryResponse, RemoteParticipant } from "@/types";
 
 function getInitials(name: string) {
   return name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
@@ -193,6 +196,10 @@ export default function MeetingRoomPage() {
   const params = useParams<{ code: string }>();
   const meetingCode = (params.code || "").toUpperCase();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // ?patient=1 is a dev/demo shortcut — there's no real role/auth system in
+  // this app, participants are otherwise fully symmetric.
+  const isPatient = searchParams.get("patient") === "1";
   const { userId, userName, setUserName, isReady } = useIdentity();
 
   const [joinState, setJoinState] = useState<JoinState>({ phase: "checking" });
@@ -249,6 +256,14 @@ export default function MeetingRoomPage() {
   // the hook connects as soon as both are truthy.
   const webrtcUserId = joinState.phase === "ready" ? userId : undefined;
   const webrtcUserName = joinState.phase === "ready" ? userName : undefined;
+
+  // Populated after useConversationMemory is created below — declared first
+  // (as a ref, not state) purely to break the ordering cycle: useWebRTC needs
+  // a stable-identity callback to call on every final caption, but that
+  // callback belongs to useConversationMemory, which itself needs
+  // `participants` — and `participants` only exists once useWebRTC has run.
+  const conversationMemoryRef = useRef<{ addUtterance: (fromUserId: string, text: string) => void } | null>(null);
+
   const {
     localStream,
     participants,
@@ -270,7 +285,20 @@ export default function MeetingRoomPage() {
     toggleRetrieval,
     dismissHud,
     leaveRoom,
-  } = useWebRTC(meetingCode, webrtcUserId, webrtcUserName);
+  } = useWebRTC(meetingCode, webrtcUserId, webrtcUserName, (fromUserId, text) => {
+    conversationMemoryRef.current?.addUtterance(fromUserId, text);
+  });
+
+  // 1:1 calls only (confirmed scope) — the dyad partner is simply "the one
+  // other participant," no active-speaker tracking needed.
+  const otherParticipant = participants.length === 1
+    ? { user_id: participants[0].user_id, user_name: participants[0].user_name }
+    : null;
+
+  const conversationMemory = useConversationMemory(meetingCode, isPatient, webrtcUserId, otherParticipant);
+  useEffect(() => {
+    conversationMemoryRef.current = conversationMemory;
+  }, [conversationMemory]);
 
   // Meeting duration timer
   useEffect(() => {
@@ -284,6 +312,16 @@ export default function MeetingRoomPage() {
   }, [joinState.phase]);
 
   const localSpeaking = useSpeakingDetection(isMuted ? null : localStream);
+
+  // Condense + persist this call's conversation-memory session before
+  // actually leaving — see useConversationMemory's documented limitation
+  // (an abrupt tab close skips this).
+  const handleLeave = async () => {
+    if (isPatient) {
+      await conversationMemory.finalize();
+    }
+    await leaveRoom();
+  };
 
   const handleCopyCode = async () => {
     try {
@@ -443,6 +481,18 @@ export default function MeetingRoomPage() {
         <HudCard loading={hudLoading} data={hudCard} onDismiss={dismissHud} />
       )}
 
+      {/* Conversation memory — patient-only, fully automatic (see useConversationMemory) */}
+      {isPatient && (
+        <>
+          <ContextBubble context={conversationMemory.currentContext} summary={conversationMemory.sessionSummary} />
+          <HistoryBubble
+            entries={conversationMemory.history}
+            loading={conversationMemory.historyLoading}
+            onOpen={conversationMemory.fetchHistory}
+          />
+        </>
+      )}
+
       {/* Header */}
       <div className="container-lg fade-in" style={{ marginBottom: "2rem" }}>
         <div
@@ -571,7 +621,7 @@ export default function MeetingRoomPage() {
         >
           {retrievalEnabled ? <ScanSearch size={24} /> : <BrainCircuit size={24} />}
         </button>
-        <button className="btn btn-danger btn-icon-lg" onClick={leaveRoom} title="Leave meeting">
+        <button className="btn btn-danger btn-icon-lg" onClick={handleLeave} title="Leave meeting">
           <PhoneOff size={22} />
         </button>
       </div>
@@ -642,6 +692,152 @@ function HudCard({
           <p style={{ fontSize: "0.875rem", lineHeight: 1.5, color: "white", margin: 0, whiteSpace: "pre-wrap" }}>
             {data.hud_card_data}
           </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Top-left bubble showing the live "what's being talked about right now"
+ * phrase — updates every ~30s (see useConversationMemory). Click expands it
+ * into the running summary of THIS call so far.
+ */
+function ContextBubble({ context, summary }: { context: string; summary: string }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div
+      className="glass-card fade-in"
+      onClick={() => setExpanded(prev => !prev)}
+      title={expanded ? "Click to collapse" : "Click to see the full summary of this call"}
+      style={{
+        position: "fixed",
+        top: "1.5rem",
+        left: "1.5rem",
+        zIndex: 50,
+        width: expanded ? "22rem" : "auto",
+        maxWidth: "calc(100vw - 3rem)",
+        padding: expanded ? "1rem 1.125rem" : "0.625rem 1rem",
+        background: "rgba(6, 11, 24, 0.85)",
+        backdropFilter: "blur(8px)",
+        cursor: "pointer",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem" }}>
+        <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.75rem", fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase", color: "var(--color-blue-400)" }}>
+          <Sparkles size={14} />
+          Right now
+        </span>
+        {expanded && (
+          <button
+            onClick={e => { e.stopPropagation(); setExpanded(false); }}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-muted)", display: "flex", padding: 0 }}
+          >
+            <X size={16} />
+          </button>
+        )}
+      </div>
+
+      {!expanded && (
+        <p style={{
+          fontSize: "0.875rem", color: "white", margin: "0.25rem 0 0", maxWidth: "16rem",
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+        }}>
+          {context || "Listening…"}
+        </p>
+      )}
+
+      {expanded && (
+        <p style={{ fontSize: "0.875rem", lineHeight: 1.5, color: "white", margin: "0.5rem 0 0", whiteSpace: "pre-wrap" }}>
+          {summary || "Nothing summarized yet — keep talking for about 30 seconds."}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Bottom-right bubble — click fetches and shows the story-style history of
+ * PAST calls with this exact other participant (never mixed with anyone
+ * else's history — see conversation_memory.py's per-dyad file scoping).
+ */
+function HistoryBubble({
+  entries,
+  loading,
+  onOpen,
+}: {
+  entries: ConversationHistoryEntry[];
+  loading: boolean;
+  onOpen: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  const handleClick = () => {
+    const next = !expanded;
+    setExpanded(next);
+    if (next) onOpen();
+  };
+
+  return (
+    <div
+      className="glass-card fade-in"
+      onClick={handleClick}
+      title={expanded ? "Click to collapse" : "Click to see past conversations"}
+      style={{
+        position: "fixed",
+        bottom: "1.5rem",
+        right: "1.5rem",
+        zIndex: 50,
+        width: expanded ? "22rem" : "auto",
+        maxWidth: "calc(100vw - 3rem)",
+        maxHeight: expanded ? "60vh" : "auto",
+        display: "flex",
+        flexDirection: "column",
+        padding: expanded ? "1rem 1.125rem" : "0.625rem 1rem",
+        background: "rgba(6, 11, 24, 0.85)",
+        backdropFilter: "blur(8px)",
+        cursor: "pointer",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem", flexShrink: 0 }}>
+        <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.75rem", fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase", color: "var(--color-blue-400)" }}>
+          <BookOpen size={14} />
+          Past conversations
+        </span>
+        {expanded && (
+          <button
+            onClick={e => { e.stopPropagation(); setExpanded(false); }}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-muted)", display: "flex", padding: 0 }}
+          >
+            <X size={16} />
+          </button>
+        )}
+      </div>
+
+      {expanded && (
+        <div style={{ overflowY: "auto", marginTop: "0.625rem" }} onClick={e => e.stopPropagation()}>
+          {loading && (
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "var(--color-text-secondary)", fontSize: "0.875rem" }}>
+              <Loader2 size={16} className="animate-spin" />
+              Loading…
+            </div>
+          )}
+          {!loading && entries.length === 0 && (
+            <p style={{ fontSize: "0.875rem", color: "var(--color-text-muted)", margin: 0 }}>
+              No past conversations with this person yet.
+            </p>
+          )}
+          {!loading && entries.map((entry, i) => (
+            <div key={i} style={{ marginBottom: "0.75rem" }}>
+              <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", margin: "0 0 0.25rem" }}>
+                {entry.timestamp}
+              </p>
+              <p style={{ fontSize: "0.875rem", lineHeight: 1.5, color: "white", margin: 0 }}>
+                {entry.summary}
+              </p>
+            </div>
+          ))}
         </div>
       )}
     </div>
