@@ -26,7 +26,7 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 
-from db.memory_storage import load_token, save_token, token_exists
+from db import load_token, save_token, token_exists
 from models.event import EventCreate, EventResult
 
 load_dotenv()

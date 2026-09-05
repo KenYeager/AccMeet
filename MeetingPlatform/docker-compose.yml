@@ -30,6 +30,13 @@ services:
     environment:
       MONGO_URI: mongodb://mongodb:27017/meetingplatform
       CORS_ORIGINS: http://localhost:3000
+      # rag/backend runs as a bare process on the host (not in this compose
+      # file) — host.docker.internal reaches it from inside the container.
+      RAG_SERVICE_URL: http://host.docker.internal:8001
+    extra_hosts:
+      # host.docker.internal is automatic on Docker Desktop (Mac/Windows);
+      # this makes it resolve on plain Linux Docker Engine too.
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
   frontend:

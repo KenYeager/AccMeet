@@ -101,3 +101,27 @@ export interface RemoteParticipant {
 }
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected" | "error";
+
+// =========================================================
+// RAG / HUD — proxied through the MeetingPlatform backend to
+// the standalone rag service (see lib/api.ts's `rag` client)
+// =========================================================
+
+export interface RagIngestItem {
+  text: string;
+  category?: string;
+  entity_name?: string;
+}
+
+export interface RagIngestResponse {
+  status: string;
+  inserted: number;
+}
+
+export interface RagQueryResponse {
+  hud_triggered: boolean;
+  tool_name: string | null;
+  query: string | null;
+  hud_card_data: string | null;
+  assistant_response: string;
+}

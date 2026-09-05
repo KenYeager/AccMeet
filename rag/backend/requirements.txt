@@ -8,3 +8,5 @@ langchain-mongodb>=0.2.0
 pymongo>=4.8.0
 pydantic>=2.8.0
 python-dotenv>=1.0.1
+httpx>=0.27.0
+langchain-google-genai>=2.0.0

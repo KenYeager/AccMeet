@@ -5,6 +5,7 @@ from functools import lru_cache
 class Settings(BaseSettings):
     mongo_uri: str = "mongodb://localhost:27017/meetingplatform"
     cors_origins: str = "http://localhost:3000"
+    rag_service_url: str = "http://host.docker.internal:8001"
 
     @property
     def cors_origins_list(self) -> list[str]:

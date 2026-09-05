@@ -1,0 +1,18 @@
+services:
+  cal-frontend:
+    image: node:20-alpine
+    container_name: cal_frontend
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- -p 3002 -H 0.0.0.0"
+    ports:
+      - "3002:3002"
+    volumes:
+      - .:/app
+      - cal_frontend_node_modules:/app/node_modules
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8002
+    restart: unless-stopped
+
+volumes:
+  cal_frontend_node_modules:
+    name: cal_frontend_node_modules

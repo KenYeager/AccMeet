@@ -22,7 +22,7 @@ from dotenv import load_dotenv
 from fastapi import APIRouter, Cookie, HTTPException, Response
 from fastapi.responses import RedirectResponse
 
-from db.memory_storage import delete_token
+from db import delete_token
 from models.event import (
     AuthStatusResponse,
     AuthUrlResponse,

@@ -21,7 +21,7 @@ tool_node = ToolNode(tools)
 
 # Gemini Flash is optimized for sub-second tool-calling cycles
 llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash",
+    model="gemini-3.5-flash-lite",
     temperature=0,
     google_api_key=os.getenv("GOOGLE_API_KEY"),
 ).bind_tools(tools)

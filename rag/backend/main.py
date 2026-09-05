@@ -1,6 +1,7 @@
+import logging
 import os
 from typing import List, Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from langchain_core.messages import HumanMessage
@@ -8,6 +9,9 @@ from langchain_core.documents import Document
 
 from rag_engine import vector_store
 from graph import agent_app
+from scheduling_graph import check_and_schedule
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 app = FastAPI(title="Meeting Copilot HUD Backend")
 
@@ -47,7 +51,7 @@ def health_check():
     return {"status": "ok", "service": "meeting-copilot-rag"}
 
 @app.post("/api/rag/ingest")
-async def ingest_lore(payload: IngestBatchRequest):
+async def ingest_lore(payload: IngestBatchRequest, background_tasks: BackgroundTasks):
     try:
         docs = [
             Document(
@@ -60,6 +64,12 @@ async def ingest_lore(payload: IngestBatchRequest):
             for item in payload.items
         ]
         vector_store.add_documents(docs)
+
+        # Fire-and-forget: check each sentence for a schedulable date/time
+        # commitment after the response is sent, so ingest latency is unaffected.
+        for item in payload.items:
+            background_tasks.add_task(check_and_schedule, item.text)
+
         return {"status": "success", "inserted": len(docs)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -101,4 +111,4 @@ async def process_transcript_chunk(payload: TranscriptInput):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=int(os.getenv("PORT", 8000)), reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=int(os.getenv("PORT", 8001)), reload=True)

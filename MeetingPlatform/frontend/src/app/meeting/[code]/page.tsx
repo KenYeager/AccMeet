@@ -6,25 +6,30 @@ import Link from "next/link";
 import {
   AlertTriangle,
   ArrowLeft,
+  BrainCircuit,
   Captions,
   CaptionsOff,
   Check,
   Copy,
   Crown,
+  Database,
+  DatabaseZap,
   Loader2,
   Mic,
   MicOff,
   PhoneOff,
+  ScanSearch,
   Users,
   Video,
   VideoOff,
+  X,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useIdentity } from "@/hooks/useIdentity";
 import { useWebRTC } from "@/hooks/useWebRTC";
 import { useSpeakingDetection } from "@/hooks/useSpeakingDetection";
 import { meetings, ApiError } from "@/lib/api";
-import type { ConnectionStatus, RemoteParticipant } from "@/types";
+import type { ConnectionStatus, RagQueryResponse, RemoteParticipant } from "@/types";
 
 function getInitials(name: string) {
   return name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
@@ -254,9 +259,16 @@ export default function MeetingRoomPage() {
     micError,
     captionsEnabled,
     localCaption,
+    ingestionEnabled,
+    retrievalEnabled,
+    hudCard,
+    hudLoading,
     toggleMute,
     toggleCamera,
     toggleCaptions,
+    toggleIngestion,
+    toggleRetrieval,
+    dismissHud,
     leaveRoom,
   } = useWebRTC(meetingCode, webrtcUserId, webrtcUserName);
 
@@ -426,6 +438,11 @@ export default function MeetingRoomPage() {
 
   return (
     <div style={{ minHeight: "100vh", padding: "1.5rem", display: "flex", flexDirection: "column" }}>
+      {/* HUD — background context surfaced by the rag agent while retrieval is on */}
+      {retrievalEnabled && (hudLoading || hudCard) && (
+        <HudCard loading={hudLoading} data={hudCard} onDismiss={dismissHud} />
+      )}
+
       {/* Header */}
       <div className="container-lg fade-in" style={{ marginBottom: "2rem" }}>
         <div
@@ -540,10 +557,93 @@ export default function MeetingRoomPage() {
         >
           {captionsEnabled ? <Captions size={24} /> : <CaptionsOff size={24} />}
         </button>
+        <button
+          className={`mute-btn ${ingestionEnabled ? "mute-btn-active" : "mute-btn-muted"}`}
+          onClick={toggleIngestion}
+          title={ingestionEnabled ? "Stop adding your speech to shared memory" : "Start adding your speech to shared memory"}
+        >
+          {ingestionEnabled ? <DatabaseZap size={24} /> : <Database size={24} />}
+        </button>
+        <button
+          className={`mute-btn ${retrievalEnabled ? "mute-btn-active" : "mute-btn-muted"}`}
+          onClick={toggleRetrieval}
+          title={retrievalEnabled ? "Turn off context lookups" : "Turn on context lookups"}
+        >
+          {retrievalEnabled ? <ScanSearch size={24} /> : <BrainCircuit size={24} />}
+        </button>
         <button className="btn btn-danger btn-icon-lg" onClick={leaveRoom} title="Leave meeting">
           <PhoneOff size={22} />
         </button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Background-context card from the rag agent — shown while retrieval is on
+ * and something worth surfacing was mentioned. Unlike CaptionBar this
+ * doesn't auto-clear on a timer: the point is to read it, so it stays until
+ * dismissed or replaced by the next triggered lookup.
+ */
+function HudCard({
+  loading,
+  data,
+  onDismiss,
+}: {
+  loading: boolean;
+  data: RagQueryResponse | null;
+  onDismiss: () => void;
+}) {
+  return (
+    <div
+      className="glass-card fade-in"
+      style={{
+        position: "fixed",
+        top: "1.5rem",
+        right: "1.5rem",
+        zIndex: 50,
+        width: "20rem",
+        maxWidth: "calc(100vw - 3rem)",
+        padding: "1rem 1.125rem",
+        background: "rgba(6, 11, 24, 0.85)",
+        backdropFilter: "blur(8px)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.5rem" }}>
+        <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.75rem", fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase", color: "var(--color-blue-400)" }}>
+          <BrainCircuit size={14} />
+          Context
+        </span>
+        {!loading && (
+          <button
+            onClick={onDismiss}
+            title="Dismiss"
+            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-muted)", display: "flex", padding: 0 }}
+          >
+            <X size={16} />
+          </button>
+        )}
+      </div>
+
+      {loading && !data && (
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "var(--color-text-secondary)", fontSize: "0.875rem" }}>
+          <Loader2 size={16} className="animate-spin" />
+          Looking that up…
+        </div>
+      )}
+
+      {data && (
+        <div>
+          {data.query && (
+            <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", margin: "0 0 0.375rem" }}>
+              &quot;{data.query}&quot;
+            </p>
+          )}
+          <p style={{ fontSize: "0.875rem", lineHeight: 1.5, color: "white", margin: 0, whiteSpace: "pre-wrap" }}>
+            {data.hud_card_data}
+          </p>
+        </div>
+      )}
     </div>
   );
 }

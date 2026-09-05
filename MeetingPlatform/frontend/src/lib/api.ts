@@ -1,4 +1,4 @@
-import type { MeetingWithParticipants, Participant } from "@/types";
+import type { MeetingWithParticipants, Participant, RagIngestItem, RagIngestResponse, RagQueryResponse } from "@/types";
 
 const API_BASE = "/api"; // Proxied by Next.js rewrites to backend
 
@@ -65,6 +65,18 @@ export const meetings = {
 
   participants: (code: string) =>
     request<Participant[]>(`/meetings/${code}/participants`),
+};
+
+// =========================================================
+// RAG endpoints — proxied by the MeetingPlatform backend to
+// the standalone rag service.
+// =========================================================
+export const rag = {
+  ingest: (items: RagIngestItem[]) =>
+    request<RagIngestResponse>("/rag/ingest", { method: "POST", body: JSON.stringify({ items }) }),
+
+  query: (chunk: string) =>
+    request<RagQueryResponse>("/rag/query", { method: "POST", body: JSON.stringify({ chunk }) }),
 };
 
 export { ApiError };
