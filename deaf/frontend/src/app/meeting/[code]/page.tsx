@@ -26,6 +26,8 @@ import toast from "react-hot-toast";
 import { useIdentity } from "@/hooks/useIdentity";
 import { useWebRTC } from "@/hooks/useWebRTC";
 import { useSpeakingDetection } from "@/hooks/useSpeakingDetection";
+import { useAslRecognition } from "@/hooks/useAslRecognition";
+import { AslRecognitionPanel } from "./AslRecognitionPanel";
 import { meetings, ApiError, API_BASE } from "@/lib/api";
 import type { ConnectionStatus, RemoteParticipant, CaptionEntry } from "@/types";
 import type { LocalCaptionEntry } from "@/hooks/useWebRTC";
@@ -416,10 +418,17 @@ export default function MeetingRoomPage() {
   const [elapsed, setElapsed] = useState(0);
   const [codeCopied, setCodeCopied] = useState(false);
   const [nameInput, setNameInput] = useState("");
+  const [isLobbyConfirmed, setIsLobbyConfirmed] = useState(false);
   const joinedAtRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!isReady || !userName || !meetingCode) return;
+    if (userName && !nameInput) {
+      setNameInput(userName);
+    }
+  }, [userName, nameInput]);
+
+  useEffect(() => {
+    if (!isReady || !userName || !meetingCode || !isLobbyConfirmed) return;
     let cancelled = false;
 
     (async () => {
@@ -446,10 +455,10 @@ export default function MeetingRoomPage() {
     })();
 
     return () => { cancelled = true; };
-  }, [isReady, userId, userName, meetingCode]);
+  }, [isReady, userId, userName, meetingCode, isLobbyConfirmed]);
 
-  const webrtcUserId = joinState.phase === "ready" ? userId : undefined;
-  const webrtcUserName = joinState.phase === "ready" ? userName : undefined;
+  const webrtcUserId = (joinState.phase === "ready" && isLobbyConfirmed) ? userId : undefined;
+  const webrtcUserName = (joinState.phase === "ready" && isLobbyConfirmed) ? userName : undefined;
 
   const {
     localStream,
@@ -480,6 +489,18 @@ export default function MeetingRoomPage() {
 
   const localSpeaking = useSpeakingDetection(isMuted ? null : localStream);
 
+  // For Normal users: watch the first remote participant's video stream for ASL signs.
+  // If no remote participant has joined (e.g. testing alone), watch the local webcam feed.
+  // Must be called unconditionally (Rules of Hooks).
+  const remoteParticipantWithStream = participants.find(p => p.stream);
+  const targetStream = !isDeaf ? (remoteParticipantWithStream?.stream || localStream) : null;
+  const targetName = remoteParticipantWithStream?.user_name || (participants.length === 0 ? `${userName} (Self)` : "Deaf Participant");
+  const { entries: aslEntries, isDetecting: aslDetecting, lastSign, clearHistory: clearAslHistory } = useAslRecognition(
+    targetStream,
+    targetName,
+    !isDeaf && !!targetStream,
+  );
+
   const handleCopyCode = async () => {
     try {
       await navigator.clipboard.writeText(meetingCode);
@@ -495,34 +516,65 @@ export default function MeetingRoomPage() {
     return <div className="page-center"><Loader2 size={28} className="animate-spin" color="var(--color-blue-400)" /></div>;
   }
 
-  if (!userName) {
-    const handleSubmitName = (e: React.FormEvent) => {
+  if (!isLobbyConfirmed) {
+    const handleJoinLobby = (e: React.FormEvent) => {
       e.preventDefault();
       const trimmed = nameInput.trim();
       if (!trimmed) { toast.error("Enter a name to continue"); return; }
       setUserName(trimmed);
+      setIsLobbyConfirmed(true);
     };
+
     return (
       <div className="page-center">
         <div className="glass-card fade-in container-sm" style={{ padding: "2.5rem" }}>
-          <h1 style={{ fontSize: "1.25rem", fontWeight: 700, marginBottom: "0.5rem" }}>Join meeting {meetingCode}</h1>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem" }}>
+            <div style={{
+              width: "2.25rem", height: "2.25rem",
+              background: "linear-gradient(135deg, #2563eb, #6366f1)",
+              borderRadius: "0.625rem",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              <Hand size={14} color="white" />
+            </div>
+            <span style={{ fontWeight: 800, fontSize: "1.125rem" }}>DeafMeet</span>
+          </div>
+
+          <h1 style={{ fontSize: "1.375rem", fontWeight: 800, marginBottom: "0.375rem" }}>
+            Join Meeting <span style={{ color: "var(--color-caption)" }}>{meetingCode}</span>
+          </h1>
           <p style={{ color: "var(--color-text-secondary)", fontSize: "0.9375rem", marginBottom: "1.5rem" }}>
-            Enter your name to continue.
+            Enter your display name and select accessibility options before joining.
           </p>
-          <form onSubmit={handleSubmitName} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-            <input autoFocus type="text" className="input" placeholder="e.g. Alex Johnson"
-              value={nameInput} onChange={e => setNameInput(e.target.value)} maxLength={50} />
+
+          <form onSubmit={handleJoinLobby} style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+            <div>
+              <label style={{ display: "block", fontSize: "0.875rem", fontWeight: 600, marginBottom: "0.375rem", color: "var(--color-text-secondary)" }}>
+                Your Display Name
+              </label>
+              <input
+                autoFocus
+                type="text"
+                className="input"
+                placeholder="e.g. Alex Johnson"
+                value={nameInput}
+                onChange={e => setNameInput(e.target.value)}
+                maxLength={50}
+                style={{ fontSize: "1rem" }}
+              />
+            </div>
 
             <label style={{
               display: "flex",
               alignItems: "center",
-              gap: "0.75rem",
-              padding: "0.75rem 1rem",
-              borderRadius: "0.625rem",
-              background: "rgba(15, 23, 42, 0.6)",
-              border: "1px solid rgba(255, 224, 51, 0.2)",
+              gap: "0.875rem",
+              padding: "0.875rem 1rem",
+              borderRadius: "0.75rem",
+              background: "rgba(15, 23, 42, 0.7)",
+              border: isDeaf ? "1px solid rgba(255, 224, 51, 0.4)" : "1px solid var(--color-border)",
               cursor: "pointer",
-              userSelect: "none"
+              userSelect: "none",
+              transition: "all 0.2s ease"
             }}>
               <input
                 type="checkbox"
@@ -531,16 +583,18 @@ export default function MeetingRoomPage() {
                 style={{ width: "1.25rem", height: "1.25rem", accentColor: "#ffd000", cursor: "pointer" }}
               />
               <div>
-                <div style={{ fontWeight: 700, fontSize: "0.9375rem", color: "var(--color-caption)" }}>
+                <div style={{ fontWeight: 700, fontSize: "0.9375rem", color: isDeaf ? "var(--color-caption)" : "white" }}>
                   I am Deaf / Hard of Hearing
                 </div>
                 <div style={{ fontSize: "0.8125rem", color: "var(--color-text-secondary)" }}>
-                  {isDeaf ? "Show ASL Sign Language conversion" : "Normal user (Hide Sign Language)"}
+                  {isDeaf ? "Show ASL Sign Language conversion panel" : "Normal user (Hide Sign Language conversion)"}
                 </div>
               </div>
             </label>
 
-            <button type="submit" className="btn btn-primary" style={{ padding: "0.75rem" }}>Continue</button>
+            <button type="submit" className="btn btn-primary" style={{ padding: "0.875rem", fontSize: "1rem", fontWeight: 700 }}>
+              Join Meeting
+            </button>
           </form>
         </div>
       </div>
@@ -669,7 +723,7 @@ export default function MeetingRoomPage() {
               onChange={e => setIsDeaf(e.target.checked)}
               style={{ width: "1rem", height: "1rem", accentColor: "#ffd000", cursor: "pointer" }}
             />
-            <span>{isDeaf ? "Deaf User (Show Sign)" : "Normal User (Hide Sign)"}</span>
+            <span>{isDeaf ? "Deaf User (Show Sign)" : "Normal User (ASL Recognition)"}</span>
           </label>
 
           <div style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
@@ -680,13 +734,14 @@ export default function MeetingRoomPage() {
         </div>
       </div>
 
-      {/* ---- Main Body: Video & Controls (100% or 70%) | ASL Sign Panel (30% if Deaf) ---- */}
+      {/* ---- Main Body: 70% Video | 30% Panel (ASL Signs for Deaf / ASL→English for Normal) ---- */}
       <div style={{ flex: 1, display: "flex", flexDirection: "row", minHeight: 0, overflow: "hidden" }}>
 
         {/* ---- Video grid + Control Bar ---- */}
         <div style={{
-          width: isDeaf ? "70%" : "100%", display: "flex", flexDirection: "column",
-          minHeight: 0, overflow: "hidden", borderRight: isDeaf ? "1px solid var(--color-border)" : "none",
+          width: "70%", display: "flex", flexDirection: "column",
+          minHeight: 0, overflow: "hidden", borderRight: "1px solid var(--color-border)",
+
           transition: "width 0.2s ease",
         }}>
           {/* Video grid space */}
@@ -779,8 +834,8 @@ export default function MeetingRoomPage() {
           </div>
         </div>
 
-        {/* ---- ASL Sign Language Panel (Only shown if Deaf User) ---- */}
-        {isDeaf && (
+        {/* ---- Right 30% Panel: Deaf user → ASL Sign Stream | Normal user → ASL→English Recognition ---- */}
+        {isDeaf ? (
           <div style={{ width: "30%", height: "100%", overflow: "hidden", display: "flex", flexDirection: "column" }}>
             <CaptionPanel
               participants={participants}
@@ -791,6 +846,15 @@ export default function MeetingRoomPage() {
               onSignPlaybackDone={clearSignPlayback}
               onRestartCaptions={restartCaptions}
               onSendManualCaption={sendManualCaption}
+            />
+          </div>
+        ) : (
+          <div style={{ width: "30%", height: "100%", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+            <AslRecognitionPanel
+              entries={aslEntries}
+              isDetecting={aslDetecting}
+              lastSign={lastSign}
+              onClear={clearAslHistory}
             />
           </div>
         )}

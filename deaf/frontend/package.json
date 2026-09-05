@@ -9,11 +9,13 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@mediapipe/camera_utils": "^0.3.1675466862",
+    "@mediapipe/hands": "^0.4.1675469240",
+    "lucide-react": "^0.468.0",
     "next": "latest",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-hot-toast": "^2.4.1",
-    "lucide-react": "^0.468.0"
+    "react-hot-toast": "^2.4.1"
   },
   "devDependencies": {
     "@types/node": "^20",

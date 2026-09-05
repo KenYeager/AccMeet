@@ -195,6 +195,16 @@ export function useWebRTC(
           }
 
           setConnectionStatus("connected");
+
+          // Start STT stream if local audio stream is already ready and STT not started yet
+          if (!sttStreamRef.current && stream && stream.getAudioTracks().length > 0) {
+            console.log("[Captions] Starting STT stream from room_state trigger");
+            const stt = new SttStream(signaling);
+            sttStreamRef.current = stt;
+            stt.start(stream).catch(err => {
+              console.error("[Captions] Failed to start STT stream:", err);
+            });
+          }
         });
 
         signaling.on("participant_joined", (msg: SignalingMessage) => {
@@ -322,6 +332,8 @@ export function useWebRTC(
 
     return () => {
       destroyed = true;
+      sttStreamRef.current?.stop();
+      sttStreamRef.current = null;
       signalingRef.current?.disconnect();
       signalingRef.current = null;
       pcManagerRef.current?.closeAll();
@@ -338,7 +350,7 @@ export function useWebRTC(
   // where the async init() cleanup fires before this code is reached.
   // -------------------------------------------------------
   useEffect(() => {
-    if (!localStream || !signalingRef.current) return;
+    if (!localStream || !signalingRef.current || sttStreamRef.current) return;
     if (!localStream.getAudioTracks().length) {
       console.warn("[Captions] No audio tracks — STT stream not started");
       return;

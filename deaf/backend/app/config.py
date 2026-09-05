@@ -5,6 +5,7 @@ from functools import lru_cache
 class Settings(BaseSettings):
     mongo_uri: str = "mongodb://localhost:27017/deafmeet"
     cors_origins: str = "http://localhost:3001"
+    gemini_api_key: str = ""
 
     @property
     def cors_origins_list(self) -> list[str]:

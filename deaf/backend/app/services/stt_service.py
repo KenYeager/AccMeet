@@ -4,6 +4,8 @@ import os
 import speech_recognition as sr
 
 recognizer = sr.Recognizer()
+recognizer.energy_threshold = 120
+recognizer.dynamic_energy_threshold = True
 
 def transcribe_wav_bytes(audio_bytes: bytes, speaker_name: str = "Speaker") -> str:
     """
@@ -22,6 +24,7 @@ def transcribe_wav_bytes(audio_bytes: bytes, speaker_name: str = "Speaker") -> s
         text = ""
         try:
             with sr.AudioFile(temp_path) as source:
+                recognizer.adjust_for_ambient_noise(source, duration=0.1)
                 audio_data = recognizer.record(source)
                 text = recognizer.recognize_google(audio_data)
         except sr.UnknownValueError:

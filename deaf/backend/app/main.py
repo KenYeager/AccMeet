@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import get_settings
 from .database import connect_db, close_db
-from .routers import meetings, websocket
+from .routers import meetings, websocket, asl_vision
 
 
 @asynccontextmanager
@@ -36,6 +36,7 @@ app.add_middleware(
 
 app.include_router(meetings.router, prefix="/api/meetings", tags=["meetings"])
 app.include_router(websocket.router, tags=["websocket"])
+app.include_router(asl_vision.router, prefix="/api/asl", tags=["asl"])
 
 # ASL sign GIFs, matched by caption_to_asl() and rendered by the frontend's
 # sign playback panel — served from deaf/gif (sibling of backend/). Mounted

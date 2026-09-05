@@ -128,3 +128,12 @@ export interface CaptionEntry {
 }
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected" | "error";
+
+export interface AslRecognitionEntry {
+  id: string;
+  word: string;
+  confidence: number;
+  timestamp: number;
+  participantName: string;
+}
+
