@@ -64,6 +64,27 @@ async def ingest_lore(items: list[dict]) -> dict:
     return response.json()
 
 
+async def orchestrate(text: str, is_patient: bool) -> dict:
+    """Forwards to rag's POST /api/agent/orchestrate — the single automatic
+    LangGraph entry point replacing the old manual ingest/retrieve toggles.
+    Can take a few seconds (up to 2 LLM turns plus 1-3 tool executions)."""
+    client = _get_client()
+    try:
+        response = await client.post(
+            "/api/agent/orchestrate",
+            json={"text": text, "is_patient": is_patient},
+            timeout=httpx.Timeout(connect=5.0, read=15.0, write=5.0, pool=5.0),
+        )
+    except httpx.ConnectError as e:
+        raise RagServiceUnavailableError() from e
+    except httpx.TimeoutException as e:
+        raise RagServiceTimeoutError() from e
+
+    if response.status_code >= 400:
+        raise RagServiceError(response.status_code, _extract_detail(response))
+    return response.json()
+
+
 async def send_conversation_chunk(
     patient_id: str, other_id: str, other_name: str, meeting_code: str, text: str
 ) -> dict:

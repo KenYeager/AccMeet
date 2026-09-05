@@ -88,6 +88,21 @@ export const rag = {
 };
 
 // =========================================================
+// Automated LangGraph orchestrator — replaces the old manual
+// ingestion/retrieval toggle buttons. One call per ~30s chunk of a
+// participant's own speech; the graph itself decides whether to store
+// it as lore, look something up (patient-only), and/or schedule a
+// calendar event. See rag/backend/graph.py.
+// =========================================================
+export const orchestrator = {
+  process: (text: string, isPatient: boolean) =>
+    request<RagQueryResponse & { actions: { tool: string; result: string }[] }>("/rag/orchestrate", {
+      method: "POST",
+      body: JSON.stringify({ text, is_patient: isPatient }),
+    }),
+};
+
+// =========================================================
 // Conversation memory — patient-only "context bubble" / "history
 // bubble" feature. Proxied through to rag/backend's per-dyad .txt
 // file storage (not a database — see conversation_memory.py).

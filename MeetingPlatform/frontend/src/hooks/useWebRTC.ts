@@ -6,7 +6,7 @@ import toast from "react-hot-toast";
 import { SignalingClient } from "@/lib/websocket";
 import { PeerConnectionManager, getLocalMediaStream } from "@/lib/webrtc";
 import { LiveCaptioner, isSpeechRecognitionSupported } from "@/lib/liveCaptioner";
-import { meetings, rag } from "@/lib/api";
+import { meetings } from "@/lib/api";
 import type {
   ConnectionStatus,
   ParticipantJoinedPayload,
@@ -18,7 +18,6 @@ import type {
   MuteStatusPayload,
   VideoStatusPayload,
   CaptionPayload,
-  RagQueryResponse,
 } from "@/types";
 
 const CAPTION_CLEAR_MS = 4000;
@@ -50,29 +49,13 @@ export function useWebRTC(
   const [micError, setMicError] = useState<string | null>(null);
   const [captionsEnabled, setCaptionsEnabled] = useState(false);
   const [localCaption, setLocalCaption] = useState("");
-  const [ingestionEnabled, setIngestionEnabled] = useState(false);
-  const [retrievalEnabled, setRetrievalEnabled] = useState(false);
-  const [hudCard, setHudCard] = useState<RagQueryResponse | null>(null);
-  const [hudLoading, setHudLoading] = useState(false);
 
   const captionerRef = useRef<LiveCaptioner | null>(null);
   const localCaptionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const captionTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
-  // Read via refs (not effect deps) inside the caption pipeline so toggling
-  // ingestion/retrieval never tears down and restarts the speech-recognition
-  // session — only whether the *next* finalized sentence gets forwarded.
-  const ingestionEnabledRef = useRef(false);
-  const retrievalEnabledRef = useRef(false);
-  useEffect(() => { ingestionEnabledRef.current = ingestionEnabled; }, [ingestionEnabled]);
-  useEffect(() => { retrievalEnabledRef.current = retrievalEnabled; }, [retrievalEnabled]);
-
   const onFinalCaptionRef = useRef(onFinalCaption);
   useEffect(() => { onFinalCaptionRef.current = onFinalCaption; }, [onFinalCaption]);
-
-  // Guards against a slower, older retrieval call overwriting a newer one's
-  // result if two finalized captions fire close together.
-  const hudRequestIdRef = useRef(0);
 
   // -------------------------------------------------------
   // Helper: update a participant's field
@@ -98,35 +81,6 @@ export function useWebRTC(
   const scheduleLocalCaptionClear = useCallback(() => {
     if (localCaptionTimerRef.current) clearTimeout(localCaptionTimerRef.current);
     localCaptionTimerRef.current = setTimeout(() => setLocalCaption(""), CAPTION_CLEAR_MS);
-  }, []);
-
-  // Writes one finalized sentence into the shared rag vector DB. Only ever
-  // called with LOCALLY-transcribed captions (never ones received from
-  // peers) — with N participants each sentence is still ingested exactly
-  // once, by its speaker's own client, with no cross-client coordination.
-  const runIngestion = useCallback((text: string) => {
-    rag.ingest([{ text }]).catch(() => {
-      console.warn("[RAG] ingest failed for chunk:", text);
-    });
-  }, []);
-
-  // Asks the rag agent whether this sentence (local OR peer — the HUD should
-  // react to anything said in the meeting) mentions something worth showing
-  // background on. Read-only, so redundant calls across clients are fine.
-  const runRetrieval = useCallback((text: string) => {
-    const requestId = ++hudRequestIdRef.current;
-    setHudLoading(true);
-    rag.query(text)
-      .then(result => {
-        if (hudRequestIdRef.current !== requestId) return; // a newer call already landed
-        if (result.hud_triggered) setHudCard(result);
-      })
-      .catch(() => {
-        console.warn("[RAG] retrieval failed for chunk:", text);
-      })
-      .finally(() => {
-        if (hudRequestIdRef.current === requestId) setHudLoading(false);
-      });
   }, []);
 
   // -------------------------------------------------------
@@ -280,7 +234,6 @@ export function useWebRTC(
           console.log("[Captions] received from peer", fromUserId, payload);
           updateParticipant(fromUserId, { caption: payload.text });
           scheduleCaptionClear(fromUserId);
-          if (payload.is_final && retrievalEnabledRef.current) runRetrieval(payload.text);
           if (payload.is_final) onFinalCaptionRef.current?.(fromUserId, payload.text);
         });
 
@@ -321,7 +274,7 @@ export function useWebRTC(
       localStreamRef.current?.getTracks().forEach(t => t.stop());
       localStreamRef.current = null;
     };
-  }, [meetingCode, currentUserId, currentUserName, updateParticipant, scheduleCaptionClear, runRetrieval]);
+  }, [meetingCode, currentUserId, currentUserName, updateParticipant, scheduleCaptionClear]);
 
   // Live captions — runs the browser's speech recognition on the local mic
   // and broadcasts transcripts as "caption" signaling messages. Only active
@@ -342,8 +295,6 @@ export function useWebRTC(
         setLocalCaption(text);
         scheduleLocalCaptionClear();
         signalingRef.current?.send("caption", { text, is_final: isFinal });
-        if (isFinal && ingestionEnabledRef.current) runIngestion(text);
-        if (isFinal && retrievalEnabledRef.current) runRetrieval(text);
         if (isFinal && currentUserId) onFinalCaptionRef.current?.(currentUserId, text);
       },
       (error) => {
@@ -359,7 +310,7 @@ export function useWebRTC(
       captioner.stop();
       captionerRef.current = null;
     };
-  }, [captionsEnabled, isMuted, localStream, scheduleLocalCaptionClear, runIngestion, runRetrieval]);
+  }, [captionsEnabled, isMuted, localStream, scheduleLocalCaptionClear]);
 
   // Handle tab close / navigation away
   useEffect(() => {
@@ -402,10 +353,6 @@ export function useWebRTC(
     });
   }, []);
 
-  const toggleIngestion = useCallback(() => setIngestionEnabled(prev => !prev), []);
-  const toggleRetrieval = useCallback(() => setRetrievalEnabled(prev => !prev), []);
-  const dismissHud = useCallback(() => setHudCard(null), []);
-
   const leaveRoom = useCallback(async () => {
     signalingRef.current?.disconnect();
     pcManagerRef.current?.closeAll();
@@ -431,16 +378,9 @@ export function useWebRTC(
     micError,
     captionsEnabled,
     localCaption,
-    ingestionEnabled,
-    retrievalEnabled,
-    hudCard,
-    hudLoading,
     toggleMute,
     toggleCamera,
     toggleCaptions,
-    toggleIngestion,
-    toggleRetrieval,
-    dismissHud,
     leaveRoom,
   };
 }

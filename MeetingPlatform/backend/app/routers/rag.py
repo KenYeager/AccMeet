@@ -23,6 +23,11 @@ class RagQueryRequest(BaseModel):
     chunk: str
 
 
+class OrchestrateRequest(BaseModel):
+    text: str
+    is_patient: bool = False
+
+
 async def _call(coro: Coroutine[Any, Any, dict]) -> dict:
     """Translates rag_service's transport-level exceptions into HTTP responses
     the frontend can distinguish: 503 down, 504 slow, 502 upstream error."""
@@ -45,3 +50,8 @@ async def ingest(body: RagIngestRequest) -> dict:
 @router.post("/query")
 async def query(body: RagQueryRequest) -> dict:
     return await _call(rag_service.query_chunk(body.chunk))
+
+
+@router.post("/orchestrate")
+async def orchestrate(body: OrchestrateRequest) -> dict:
+    return await _call(rag_service.orchestrate(body.text, body.is_patient))
