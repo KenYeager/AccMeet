@@ -6,6 +6,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from ..database import get_db
 from ..services.signaling_service import room_manager
 from ..services.meeting_service import get_meeting_by_code
+from ..services import stt_peer_service
 
 router = APIRouter()
 
@@ -15,6 +16,11 @@ RELAY_TYPES = {"offer", "answer", "ice_candidate"}
 # Message types that get broadcast to all peers in the room
 # caption is critical for deaf users — always broadcast
 BROADCAST_TYPES = {"mute_status", "video_status", "caption"}
+
+# Client<->server SDP exchange for the dedicated browser-to-backend audio
+# connection used for server-side transcription — not relayed to other
+# peers, handled directly by stt_peer_service.
+STT_TYPES = {"stt_offer", "stt_ice_candidate"}
 
 
 @router.websocket("/ws/{meeting_code}")
@@ -107,10 +113,25 @@ async def websocket_endpoint(
                     "payload": payload,
                 }, exclude_user_id=user_id)
 
+            elif msg_type == "stt_offer":
+                # Client's SDP offer for its dedicated audio-to-backend
+                # connection (server-side STT), not a peer — no relay target.
+                answer = await stt_peer_service.handle_offer(
+                    meeting_code, user_id, user_name, payload
+                )
+                await room_manager.send_to_self(meeting_code, user_id, {
+                    "type": "stt_answer",
+                    "payload": answer,
+                })
+
+            elif msg_type == "stt_ice_candidate":
+                await stt_peer_service.add_ice_candidate(meeting_code, user_id, payload)
+
     except WebSocketDisconnect:
         pass
     finally:
         room_manager.disconnect(meeting_code, user_id)
+        await stt_peer_service.close(meeting_code, user_id)
 
         await room_manager.broadcast(meeting_code, {
             "type": "participant_left",

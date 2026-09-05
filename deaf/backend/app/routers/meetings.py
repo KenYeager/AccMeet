@@ -1,11 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Form
+from fastapi import APIRouter, Depends, HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, field_validator
 
 from ..database import get_db
 from ..models.meeting import MeetingResponse, MeetingWithParticipants, ParticipantResponse
 from ..services import meeting_service
-from ..services.stt_service import transcribe_wav_bytes
 
 router = APIRouter()
 
@@ -117,23 +116,3 @@ async def get_participants(
     if not meeting_doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
     return await meeting_service.get_active_participants(code, db)
-
-
-@router.post("/{code}/transcribe")
-async def transcribe_audio(
-    code: str,
-    file: UploadFile = File(...),
-    user_id: str = Form(...),
-    user_name: str = Form(...),
-):
-    audio_bytes = await file.read()
-    text = transcribe_wav_bytes(audio_bytes, speaker_name=user_name)
-    if text:
-        from ..services.signaling_service import room_manager
-        await room_manager.broadcast(code.upper(), {
-            "type": "caption",
-            "from_user_id": user_id,
-            "from_user_name": user_name,
-            "payload": {"text": text, "is_final": True},
-        })
-    return {"text": text}

@@ -76,14 +76,25 @@ export type SignalingMessageType =
   | "mute_status"
   | "video_status"
   | "caption"
+  | "stt_offer"
+  | "stt_answer"
+  | "stt_ice_candidate"
   | "error";
+
+// SDP exchange for the client's dedicated browser-to-server audio connection
+// (separate from the browser-to-browser mesh `WebRTCPayload` above) — used
+// only to carry audio to the backend for server-side transcription.
+export interface SttSdpPayload {
+  sdp: string;
+  type: RTCSdpType;
+}
 
 export interface SignalingMessage {
   type: SignalingMessageType;
   from_user_id?: string;
   from_user_name?: string;
   target_user_id?: string;
-  payload: RoomStatePayload | ParticipantJoinedPayload | ParticipantLeftPayload | MuteStatusPayload | VideoStatusPayload | CaptionPayload | WebRTCPayload | { message: string };
+  payload: RoomStatePayload | ParticipantJoinedPayload | ParticipantLeftPayload | MuteStatusPayload | VideoStatusPayload | CaptionPayload | WebRTCPayload | SttSdpPayload | { message: string };
 }
 
 // =========================================================

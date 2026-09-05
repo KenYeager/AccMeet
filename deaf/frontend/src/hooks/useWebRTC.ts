@@ -5,8 +5,7 @@ import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { SignalingClient } from "@/lib/websocket";
 import { PeerConnectionManager, getLocalMediaStream } from "@/lib/webrtc";
-import { LiveCaptioner, isSpeechRecognitionSupported, type CaptionerStatus } from "@/lib/liveCaptioner";
-import { AudioTranscriber } from "@/lib/audioTranscriber";
+import { SttStream } from "@/lib/sttStream";
 import { meetings } from "@/lib/api";
 import type {
   CaptionEntry,
@@ -56,10 +55,8 @@ export function useWebRTC(
   // Caption state — always on for deaf users
   const [localCaption, setLocalCaption] = useState("");
   const [localCaptionHistory, setLocalCaptionHistory] = useState<LocalCaptionEntry[]>([]);
-  const [captionStatus, setCaptionStatus] = useState<CaptionerStatus>("idle");
 
-  const captionerRef = useRef<LiveCaptioner | null>(null);
-  const audioTranscriberRef = useRef<AudioTranscriber | null>(null);
+  const sttStreamRef = useRef<SttStream | null>(null);
   const localCaptionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const captionTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
@@ -109,6 +106,22 @@ export function useWebRTC(
   const scheduleLocalCaptionClear = useCallback(() => {
     if (localCaptionTimerRef.current) clearTimeout(localCaptionTimerRef.current);
     localCaptionTimerRef.current = setTimeout(() => setLocalCaption(""), CAPTION_CLEAR_MS);
+  }, []);
+
+  const appendLocalCaptionHistory = useCallback((text: string, isFinal: boolean) => {
+    setLocalCaptionHistory(prev => {
+      const last = prev[prev.length - 1];
+      const entry: LocalCaptionEntry = { id: `self-${Date.now()}`, text, isFinal, timestamp: Date.now() };
+      let next: LocalCaptionEntry[];
+      if (last && !last.isFinal) {
+        // Replace rolling interim with latest
+        next = [...prev.slice(0, -1), entry];
+      } else {
+        next = [...prev, entry];
+      }
+      if (next.length > MAX_HISTORY) next = next.slice(next.length - MAX_HISTORY);
+      return next;
+    });
   }, []);
 
   // -------------------------------------------------------
@@ -234,11 +247,23 @@ export function useWebRTC(
           updateParticipant(msg.from_user_id!, { isCameraOff: payload.is_camera_off });
         });
 
-        // Caption received from a remote peer
+        // Captions now originate entirely server-side (see stt_peer_service.py)
+        // — both "my own speech" and "a peer's speech" arrive over this same
+        // broadcast, told apart only by from_user_id. The old direct
+        // LiveCaptioner callback that used to populate localCaption locally
+        // no longer exists.
         signaling.on("caption", (msg: SignalingMessage) => {
           if (destroyed) return;
           const payload = msg.payload as CaptionPayload;
           const fromUserId = msg.from_user_id!;
+
+          if (fromUserId === currentUserId) {
+            setLocalCaption(payload.text);
+            scheduleLocalCaptionClear();
+            appendLocalCaptionHistory(payload.text, payload.is_final);
+            return;
+          }
+
           updateParticipant(fromUserId, { caption: payload.text });
           appendCaptionHistory(fromUserId, {
             id: `${fromUserId}-${Date.now()}`,
@@ -276,8 +301,6 @@ export function useWebRTC(
 
     return () => {
       destroyed = true;
-      captionerRef.current?.stop();
-      captionerRef.current = null;
       signalingRef.current?.disconnect();
       signalingRef.current = null;
       pcManagerRef.current?.closeAll();
@@ -285,70 +308,35 @@ export function useWebRTC(
       localStreamRef.current?.getTracks().forEach(t => t.stop());
       localStreamRef.current = null;
     };
-  }, [meetingCode, currentUserId, currentUserName, updateParticipant, appendCaptionHistory, scheduleCaptionClear]);
+  }, [meetingCode, currentUserId, currentUserName, updateParticipant, appendCaptionHistory, scheduleCaptionClear, appendLocalCaptionHistory, scheduleLocalCaptionClear]);
 
   // -------------------------------------------------------
-  // Auto-start captions once we have a live local stream.
-  // Keeping this in a separate useEffect (keyed on localStream)
-  // avoids the React StrictMode double-invoke race where the
-  // async init() cleanup fires before the captioner code is reached.
+  // Auto-start server-side captioning once we have a live local stream and
+  // an open signaling connection. Keeping this in a separate useEffect
+  // (keyed on localStream) avoids the React StrictMode double-invoke race
+  // where the async init() cleanup fires before this code is reached.
   // -------------------------------------------------------
   useEffect(() => {
-    if (!localStream) return;
-    if (!isSpeechRecognitionSupported()) {
-      console.warn("[Captions] SpeechRecognition not supported in this browser");
-      return;
-    }
+    if (!localStream || !signalingRef.current) return;
     if (!localStream.getAudioTracks().length) {
-      console.warn("[Captions] No audio tracks — captioner not started");
+      console.warn("[Captions] No audio tracks — STT stream not started");
       return;
     }
 
-    console.log("[Captions] Starting live captioner");
-    const captioner = new LiveCaptioner(
-      (text, isFinal) => {
-        setLocalCaption(text);
-        scheduleLocalCaptionClear();
-        setLocalCaptionHistory(prev => {
-          const last = prev[prev.length - 1];
-          let next: LocalCaptionEntry[];
-          const entry: LocalCaptionEntry = { id: `self-${Date.now()}`, text, isFinal, timestamp: Date.now() };
-          if (last && !last.isFinal) {
-            // Replace rolling interim with latest
-            next = [...prev.slice(0, -1), entry];
-          } else {
-            next = [...prev, entry];
-          }
-          if (next.length > MAX_HISTORY) next = next.slice(next.length - MAX_HISTORY);
-          return next;
-        });
-        signalingRef.current?.send("caption", { text, is_final: isFinal });
-      },
-      (error) => {
-        console.warn("[Captions] error:", error);
-        toast.error(`Captions: ${error}`);
-      }
-    );
-    captioner.onStatusChange = (s) => setCaptionStatus(s);
-    captionerRef.current = captioner;
-    captioner.start();
-
-    // Start AudioTranscriber for server-side audio speech recognition
-    if (currentUserId && currentUserName) {
-      const transcriber = new AudioTranscriber();
-      audioTranscriberRef.current = transcriber;
-      transcriber.start(localStream, meetingCode, currentUserId, currentUserName);
-    }
+    console.log("[Captions] Starting server-side STT stream");
+    const sttStream = new SttStream(signalingRef.current);
+    sttStreamRef.current = sttStream;
+    sttStream.start(localStream).catch(err => {
+      console.error("[Captions] Failed to start STT stream:", err);
+      toast.error("Live captions unavailable — could not connect to caption service");
+    });
 
     return () => {
-      console.log("[Captions] Stopping captioner");
-      captioner.stop();
-      captionerRef.current = null;
-      audioTranscriberRef.current?.stop();
-      audioTranscriberRef.current = null;
-      setCaptionStatus("idle");
+      console.log("[Captions] Stopping STT stream");
+      sttStreamRef.current?.stop();
+      sttStreamRef.current = null;
     };
-  }, [localStream, scheduleLocalCaptionClear]);
+  }, [localStream]);
 
   // Handle tab close
   useEffect(() => {
@@ -380,8 +368,8 @@ export function useWebRTC(
   }, []);
 
   const leaveRoom = useCallback(async () => {
-    captionerRef.current?.stop();
-    captionerRef.current = null;
+    sttStreamRef.current?.stop();
+    sttStreamRef.current = null;
     signalingRef.current?.disconnect();
     pcManagerRef.current?.closeAll();
     localStreamRef.current?.getTracks().forEach(t => t.stop());
@@ -391,10 +379,15 @@ export function useWebRTC(
     router.push("/dashboard");
   }, [meetingCode, currentUserId, router]);
 
+  // Manually tears down and re-offers the server-side STT connection — a
+  // recovery action for when captions silently stop (e.g. the backend peer
+  // connection died without the client noticing).
   const restartCaptions = useCallback(() => {
-    if (captionerRef.current) {
-      captionerRef.current.stop();
-      captionerRef.current.start();
+    sttStreamRef.current?.stop();
+    if (localStreamRef.current && signalingRef.current) {
+      const sttStream = new SttStream(signalingRef.current);
+      sttStreamRef.current = sttStream;
+      sttStream.start(localStreamRef.current);
       toast.success("Captions restarted");
     } else {
       toast("Starting captions...");
@@ -429,7 +422,6 @@ export function useWebRTC(
     micError,
     localCaption,
     localCaptionHistory,
-    captionStatus,
     toggleMute,
     toggleCamera,
     leaveRoom,

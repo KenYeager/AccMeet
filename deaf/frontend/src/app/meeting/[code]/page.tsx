@@ -29,7 +29,6 @@ import { useSpeakingDetection } from "@/hooks/useSpeakingDetection";
 import { meetings, ApiError } from "@/lib/api";
 import type { ConnectionStatus, RemoteParticipant, CaptionEntry } from "@/types";
 import type { LocalCaptionEntry } from "@/hooks/useWebRTC";
-import type { CaptionerStatus } from "@/lib/liveCaptioner";
 
 function getInitials(name: string) {
   return name ? name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2) : "?";
@@ -199,7 +198,6 @@ function CaptionPanel({
   localUserName,
   localCaption,
   localHistory,
-  captionStatus,
   onRestartCaptions,
   onSendManualCaption,
 }: {
@@ -207,7 +205,6 @@ function CaptionPanel({
   localUserName: string;
   localCaption: string;
   localHistory: LocalCaptionEntry[];
-  captionStatus: CaptionerStatus;
   onRestartCaptions: () => void;
   onSendManualCaption: (text: string) => void;
 }) {
@@ -265,21 +262,6 @@ function CaptionPanel({
             textTransform: "uppercase", letterSpacing: "0.06em",
           }}>
             <Sparkles size={15} /> Live Transcripts & Captions
-          </div>
-
-          <div style={{
-            display: "inline-flex", alignItems: "center", gap: "0.375rem",
-            background: captionStatus === "active" ? "rgba(34, 197, 94, 0.12)" : captionStatus === "error" ? "rgba(239, 68, 68, 0.12)" : "rgba(245, 158, 11, 0.12)",
-            border: `1px solid ${captionStatus === "active" ? "rgba(34, 197, 94, 0.3)" : captionStatus === "error" ? "rgba(239, 68, 68, 0.3)" : "rgba(245, 158, 11, 0.3)"}`,
-            borderRadius: "1rem", padding: "0.15rem 0.6rem", fontSize: "0.75rem", fontWeight: 600,
-            color: captionStatus === "active" ? "var(--color-success)" : captionStatus === "error" ? "var(--color-danger)" : "var(--color-warning)",
-          }}>
-            <span style={{
-              width: "0.4rem", height: "0.4rem", borderRadius: "50%",
-              background: captionStatus === "active" ? "var(--color-success)" : captionStatus === "error" ? "var(--color-danger)" : "var(--color-warning)",
-              display: "inline-block",
-            }} />
-            {captionStatus === "active" ? "Listening" : captionStatus === "starting" ? "Starting..." : captionStatus === "error" ? "Mic Error" : "Idle"}
           </div>
         </div>
 
@@ -458,7 +440,6 @@ export default function MeetingRoomPage() {
     micError,
     localCaption,
     localCaptionHistory,
-    captionStatus,
     toggleMute,
     toggleCamera,
     leaveRoom,
@@ -671,7 +652,6 @@ export default function MeetingRoomPage() {
             localUserName={userName}
             localCaption={localCaption}
             localHistory={localCaptionHistory}
-            captionStatus={captionStatus}
             onRestartCaptions={restartCaptions}
             onSendManualCaption={sendManualCaption}
           />
@@ -706,16 +686,17 @@ export default function MeetingRoomPage() {
           {isCameraOff ? <VideoOff size={20} /> : <Video size={20} />}
         </button>
 
-        {/* Captions toggle/restart circular button */}
+        {/* Captions are always on server-side — this button just restarts
+            the connection if it silently drops. */}
         <button
-          className={`ctrl-btn ${captionStatus === "active" ? "ctrl-btn-on" : "ctrl-btn-off"}`}
+          className="ctrl-btn ctrl-btn-on"
           onClick={restartCaptions}
-          title={captionStatus === "active" ? "Captions Active — Click to restart" : "Click to start captions"}
-          style={captionStatus === "active" ? {
+          title="Restart captions"
+          style={{
             background: "rgba(255, 224, 51, 0.15)",
             color: "var(--color-caption)",
             borderColor: "rgba(255, 224, 51, 0.3)",
-          } : undefined}
+          }}
         >
           <Captions size={20} />
         </button>
