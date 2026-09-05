@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { conversation } from "@/lib/api";
-import type { ConversationHistoryEntry } from "@/types";
+import type { CaregiverTipPayload, ConversationHistoryEntry } from "@/types";
 
 const CHUNK_INTERVAL_MS = 30_000;
 
@@ -25,6 +25,9 @@ export function useConversationMemory(
   isPatient: boolean,
   patientId: string | undefined,
   otherParticipant: OtherParticipant | null,
+  // Relays a detected repeated-question tip to the other participant's
+  // socket, targeted by their user_id — see useWebRTC's sendCaregiverTip.
+  sendCaregiverTip: (payload: CaregiverTipPayload, targetUserId: string) => void,
 ) {
   const [currentContext, setCurrentContext] = useState("");
   const [sessionSummary, setSessionSummary] = useState("");
@@ -64,6 +67,9 @@ export function useConversationMemory(
         .then(result => {
           setCurrentContext(result.current_context);
           setSessionSummary(result.session_summary);
+          if (result.caregiver_tip) {
+            sendCaregiverTip(result.caregiver_tip, other.user_id);
+          }
         })
         .catch(() => {
           console.warn("[ConversationMemory] chunk summarization failed");
@@ -71,7 +77,7 @@ export function useConversationMemory(
     }, CHUNK_INTERVAL_MS);
 
     return () => clearInterval(interval);
-  }, [isPatient, patientId, meetingCode]);
+  }, [isPatient, patientId, meetingCode, sendCaregiverTip]);
 
   // Called before leaving the call — condenses this session's lines into a
   // paragraph and appends it to the persistent per-dyad file. See the

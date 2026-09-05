@@ -179,6 +179,10 @@ async def conversation_chunk(payload: ConversationChunkRequest):
             "current_context": result.current_context,
             "summary_line": result.summary_line,
             "session_summary": get_session_summary(payload.patient_id, payload.other_id, payload.meeting_code),
+            "caregiver_tip": (
+                {"repeated_topic": result.repeated_topic, "suggestion": result.caregiver_suggestion}
+                if result.patient_repeated else None
+            ),
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

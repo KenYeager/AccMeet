@@ -10,7 +10,7 @@ from ..services.meeting_service import get_meeting_by_code
 router = APIRouter()
 
 # Message types that get relayed to a specific target peer
-RELAY_TYPES = {"offer", "answer", "ice_candidate"}
+RELAY_TYPES = {"offer", "answer", "ice_candidate", "caregiver_tip"}
 
 # Message types that get broadcast to all peers in the room
 BROADCAST_TYPES = {"mute_status", "video_status", "caption"}

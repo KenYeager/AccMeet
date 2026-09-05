@@ -58,6 +58,11 @@ export interface CaptionPayload {
   is_final: boolean;
 }
 
+export interface CaregiverTipPayload {
+  repeated_topic: string;
+  suggestion: string;
+}
+
 export interface WebRTCPayload {
   sdp?: string;
   type?: RTCSdpType;
@@ -76,6 +81,7 @@ export type SignalingMessageType =
   | "mute_status"
   | "video_status"
   | "caption"
+  | "caregiver_tip"
   | "error";
 
 export interface SignalingMessage {
@@ -83,7 +89,7 @@ export interface SignalingMessage {
   from_user_id?: string;
   from_user_name?: string;
   target_user_id?: string;
-  payload: RoomStatePayload | ParticipantJoinedPayload | ParticipantLeftPayload | MuteStatusPayload | VideoStatusPayload | CaptionPayload | WebRTCPayload | { message: string };
+  payload: RoomStatePayload | ParticipantJoinedPayload | ParticipantLeftPayload | MuteStatusPayload | VideoStatusPayload | CaptionPayload | CaregiverTipPayload | WebRTCPayload | { message: string };
 }
 
 // =========================================================
@@ -136,6 +142,7 @@ export interface ConversationChunkResponse {
   current_context: string;
   summary_line: string;
   session_summary: string;
+  caregiver_tip: CaregiverTipPayload | null;
 }
 
 export interface ConversationHistoryEntry {

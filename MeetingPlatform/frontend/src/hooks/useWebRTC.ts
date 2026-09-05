@@ -18,6 +18,7 @@ import type {
   MuteStatusPayload,
   VideoStatusPayload,
   CaptionPayload,
+  CaregiverTipPayload,
 } from "@/types";
 
 const CAPTION_CLEAR_MS = 4000;
@@ -30,6 +31,9 @@ export function useWebRTC(
   // Read via a ref (see onFinalCaptionRef below) so passing a fresh inline
   // function each render never tears down/restarts the connection effect.
   onFinalCaption?: (fromUserId: string, text: string) => void,
+  // Fires when a targeted "caregiver_tip" message arrives from the patient's
+  // client — see useConversationMemory, which computes and sends these.
+  onCaregiverTip?: (payload: CaregiverTipPayload) => void,
 ) {
   const router = useRouter();
 
@@ -56,6 +60,9 @@ export function useWebRTC(
 
   const onFinalCaptionRef = useRef(onFinalCaption);
   useEffect(() => { onFinalCaptionRef.current = onFinalCaption; }, [onFinalCaption]);
+
+  const onCaregiverTipRef = useRef(onCaregiverTip);
+  useEffect(() => { onCaregiverTipRef.current = onCaregiverTip; }, [onCaregiverTip]);
 
   // -------------------------------------------------------
   // Helper: update a participant's field
@@ -237,6 +244,13 @@ export function useWebRTC(
           if (payload.is_final) onFinalCaptionRef.current?.(fromUserId, payload.text);
         });
 
+        // caregiver_tip — targeted, computed on the patient's client and
+        // sent straight at this participant's user_id (see useConversationMemory)
+        signaling.on("caregiver_tip", (msg: SignalingMessage) => {
+          if (destroyed) return;
+          onCaregiverTipRef.current?.(msg.payload as CaregiverTipPayload);
+        });
+
         // Connection status
         signaling.on("open" as any, () => setConnectionStatus("connected"));
         signaling.on("close" as any, () => {
@@ -353,6 +367,13 @@ export function useWebRTC(
     });
   }, []);
 
+  // Called from useConversationMemory after a chunk response comes back with
+  // a repeated-question tip — relayed straight to the non-patient's socket,
+  // targeted by user_id (same relay mechanism as offer/answer/ice_candidate).
+  const sendCaregiverTip = useCallback((payload: CaregiverTipPayload, targetUserId: string) => {
+    signalingRef.current?.send("caregiver_tip", payload, targetUserId);
+  }, []);
+
   const leaveRoom = useCallback(async () => {
     signalingRef.current?.disconnect();
     pcManagerRef.current?.closeAll();
@@ -381,6 +402,7 @@ export function useWebRTC(
     toggleMute,
     toggleCamera,
     toggleCaptions,
+    sendCaregiverTip,
     leaveRoom,
   };
 }

@@ -13,6 +13,7 @@ import {
   Check,
   Copy,
   Crown,
+  Lightbulb,
   Loader2,
   Mic,
   MicOff,
@@ -30,7 +31,7 @@ import { useConversationMemory } from "@/hooks/useConversationMemory";
 import { useRagOrchestrator } from "@/hooks/useRagOrchestrator";
 import { useSpeakingDetection } from "@/hooks/useSpeakingDetection";
 import { meetings, ApiError } from "@/lib/api";
-import type { ConnectionStatus, ConversationHistoryEntry, RagQueryResponse, RemoteParticipant } from "@/types";
+import type { CaregiverTipPayload, ConnectionStatus, ConversationHistoryEntry, RagQueryResponse, RemoteParticipant } from "@/types";
 
 function getInitials(name: string) {
   return name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
@@ -263,6 +264,11 @@ export default function MeetingRoomPage() {
   const conversationMemoryRef = useRef<{ addUtterance: (fromUserId: string, text: string) => void } | null>(null);
   const ragOrchestratorRef = useRef<{ addUtterance: (fromUserId: string, text: string) => void } | null>(null);
 
+  // Caregiver-tip card is patient-only to COMPUTE but non-patient-only to
+  // SHOW — see useConversationMemory (computes + sends) and useWebRTC's
+  // onCaregiverTip (receives, targeted delivery, see backend RELAY_TYPES).
+  const [caregiverTip, setCaregiverTip] = useState<CaregiverTipPayload | null>(null);
+
   const {
     localStream,
     participants,
@@ -276,11 +282,12 @@ export default function MeetingRoomPage() {
     toggleMute,
     toggleCamera,
     toggleCaptions,
+    sendCaregiverTip,
     leaveRoom,
   } = useWebRTC(meetingCode, webrtcUserId, webrtcUserName, (fromUserId, text) => {
     conversationMemoryRef.current?.addUtterance(fromUserId, text);
     ragOrchestratorRef.current?.addUtterance(fromUserId, text);
-  });
+  }, setCaregiverTip);
 
   // 1:1 calls only (confirmed scope) — the dyad partner is simply "the one
   // other participant," no active-speaker tracking needed.
@@ -288,7 +295,7 @@ export default function MeetingRoomPage() {
     ? { user_id: participants[0].user_id, user_name: participants[0].user_name }
     : null;
 
-  const conversationMemory = useConversationMemory(meetingCode, isPatient, webrtcUserId, otherParticipant);
+  const conversationMemory = useConversationMemory(meetingCode, isPatient, webrtcUserId, otherParticipant, sendCaregiverTip);
   useEffect(() => {
     conversationMemoryRef.current = conversationMemory;
   }, [conversationMemory]);
@@ -299,6 +306,14 @@ export default function MeetingRoomPage() {
   useEffect(() => {
     ragOrchestratorRef.current = ragOrchestrator;
   }, [ragOrchestrator]);
+
+  // Caregiver tip auto-dismisses so it doesn't linger and clutter the call —
+  // a fresh tip resets the timer.
+  useEffect(() => {
+    if (!caregiverTip) return;
+    const timer = setTimeout(() => setCaregiverTip(null), 20000);
+    return () => clearTimeout(timer);
+  }, [caregiverTip]);
 
   // Meeting duration timer
   useEffect(() => {
@@ -483,6 +498,13 @@ export default function MeetingRoomPage() {
           this isPatient check is defense-in-depth, not the real guarantee). */}
       {isPatient && (ragOrchestrator.hudLoading || ragOrchestrator.hudCard) && (
         <HudCard loading={ragOrchestrator.hudLoading} data={ragOrchestrator.hudCard} onDismiss={ragOrchestrator.dismissHud} />
+      )}
+
+      {/* Repetition-watch tip — computed on the PATIENT's client (see
+          useConversationMemory) but relayed and shown only to the OTHER
+          participant, never the patient themselves. */}
+      {!isPatient && caregiverTip && (
+        <CaregiverTipCard tip={caregiverTip} onDismiss={() => setCaregiverTip(null)} />
       )}
 
       {/* Conversation memory — patient-only, fully automatic (see useConversationMemory) */}
@@ -684,6 +706,56 @@ function HudCard({
           </p>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Amber-toned suggestion card shown only to the non-patient participant when
+ * the patient repeats a question or fact (see conversation_memory.py's
+ * patient_repeated detection). Distinct styling from HudCard so the two are
+ * never mistaken for each other, though in practice they never render for
+ * the same user at once (HudCard is patient-only, this is non-patient-only).
+ */
+function CaregiverTipCard({ tip, onDismiss }: { tip: CaregiverTipPayload; onDismiss: () => void }) {
+  return (
+    <div
+      className="glass-card fade-in"
+      style={{
+        position: "fixed",
+        top: "1.5rem",
+        right: "1.5rem",
+        zIndex: 50,
+        width: "22rem",
+        maxWidth: "calc(100vw - 3rem)",
+        padding: "1rem 1.125rem",
+        background: "rgba(28, 20, 4, 0.9)",
+        border: "1px solid rgba(217, 158, 46, 0.35)",
+        backdropFilter: "blur(8px)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.5rem" }}>
+        <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.75rem", fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase", color: "#e0a530" }}>
+          <Lightbulb size={14} />
+          Gentle reminder
+        </span>
+        <button
+          onClick={onDismiss}
+          title="Dismiss"
+          style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-muted)", display: "flex", padding: 0 }}
+        >
+          <X size={16} />
+        </button>
+      </div>
+
+      {tip.repeated_topic && (
+        <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", margin: "0 0 0.375rem" }}>
+          They may be {tip.repeated_topic}
+        </p>
+      )}
+      <p style={{ fontSize: "0.875rem", lineHeight: 1.5, color: "white", margin: 0, whiteSpace: "pre-wrap" }}>
+        {tip.suggestion}
+      </p>
     </div>
   );
 }

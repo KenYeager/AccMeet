@@ -9,6 +9,13 @@ that exact pair — so history for (patient, Priya) lives in a completely
 different file than (patient, Raj), which is what keeps their conversations
 from ever mixing. No filter query to get wrong; the filesystem does the
 scoping.
+
+The same per-chunk call also watches for the patient repeating a question or
+fact — comparing against both this call's running lines and past calls'
+persisted summaries (read straight from the same .txt file, no separate
+vector index) — and if so produces caregiver-facing coaching on how to
+respond without causing stress. See ChunkSummary's patient_repeated/
+repeated_topic/caregiver_suggestion fields.
 """
 import logging
 import os
@@ -41,6 +48,24 @@ class ChunkSummary(BaseModel):
     summary_line: str = Field(
         description="One sentence summarizing this snippet of conversation, for a running log."
     )
+    patient_repeated: bool = Field(
+        default=False,
+        description="True ONLY if the PATIENT is asking or stating something whose substance "
+        "was already covered earlier this call or in a past call — not a natural follow-up "
+        "question building on what was just said.",
+    )
+    repeated_topic: str = Field(
+        default="", description="Brief description of what's being repeated, e.g. "
+        "'asking who Priya is'. Empty if patient_repeated is false."
+    )
+    caregiver_suggestion: str = Field(
+        default="", description="Coaching for the OTHER person on HOW to respond right now, "
+        "in a way that avoids stressing or embarrassing the patient — tone (calm, warm, "
+        "unhurried), technique (validate the feeling first, keep the factual part short, "
+        "redirect if needed), and a ready-to-use example phrase they could say. Never suggest "
+        "correcting, quizzing, or pointing out that this was already asked. Empty if "
+        "patient_repeated is false."
+    )
 
 
 # Structured-output binding is stateless/reusable — build it once, not per call.
@@ -69,10 +94,53 @@ async def summarize_chunk(
     patient_id: str, other_id: str, other_name: str, meeting_code: str, text: str
 ) -> ChunkSummary:
     key = (patient_id, other_id, meeting_code)
+
+    session_lines = _sessions.get(key, [])
+    session_text = (
+        "\n".join(f"- {line}" for line in session_lines)
+        if session_lines else "(nothing yet — this is the first chunk of the call)"
+    )
+
+    past_entries = read_history(patient_id, other_id, other_name)[:5]
+    past_calls_text = (
+        "\n".join(f"- ({entry['timestamp']}) {entry['summary']}" for entry in past_entries)
+        if past_entries else "(no past calls with this person on record)"
+    )
+
     prompt = (
         "This is a ~30-second snippet of transcript from an ongoing live video call "
         "between a memory-care patient and a family member or friend. Each line is "
-        "prefixed with who said it.\n\n"
+        "prefixed with who said it — lines prefixed \"Patient:\" are the patient's own "
+        "words.\n\n"
+        "You are writing directly TO the patient, for the patient to read. Always address "
+        "the patient as \"you\" — never write \"the patient\" or \"Patient\" in your output. "
+        f"Refer to the other person by their name, {other_name}. For example, write "
+        f"\"{other_name} mentioned he had lunch with Priya\" or \"You asked {other_name} how "
+        "Priya was doing\", not \"the patient asked how she was doing\".\n\n"
+        f"What's been said so far earlier THIS call:\n{session_text}\n\n"
+        f"Summaries of PAST calls with {other_name}:\n{past_calls_text}\n\n"
+        "Separately, check whether the patient is repeating something — decide "
+        "`patient_repeated` by comparing this chunk's \"Patient:\" lines against both the "
+        "earlier-this-call list and the past-calls summaries above. Only flag it when the "
+        "patient is asking/stating something whose substance was already covered — NOT when "
+        "it's a natural follow-up building on what was just said (e.g. asking \"how is she "
+        "doing\" right after first mentioning someone is NOT a repeat; asking \"who is Priya?\" "
+        "again after already being told, minutes or days ago, IS a repeat).\n\n"
+        "If it IS a repeat, write `caregiver_suggestion` as coaching for the OTHER person on "
+        "HOW to respond right now without stressing or embarrassing the patient — cover tone "
+        "(calm, warm, unhurried), technique (validate the feeling first, keep the factual part "
+        "short, redirect if it seems like they're anxious or frustrated), and end with a "
+        "ready-to-use example phrase. Never suggest correcting, quizzing, or telling the "
+        "patient they already asked this. For example:\n"
+        "- \"Stay warm and unhurried — they're not being difficult, they may be anxious about "
+        "forgetting. Validate first, then answer briefly: 'It's okay to ask again — Priya's "
+        "your granddaughter, she just moved to Boston.' Avoid quizzing them or saying you "
+        "already told them.\"\n"
+        "- \"If they seem frustrated by not remembering, it's fine to skip the fact this time "
+        "and redirect gently instead: 'That's alright, tell me what's been on your mind today' "
+        "— reduces pressure more than repeating the same answer a fourth time.\"\n"
+        "If nothing qualifies as a repeat, leave patient_repeated false and the other two "
+        "fields empty.\n\n"
         f"Transcript snippet:\n{text}"
     )
     try:
@@ -100,8 +168,12 @@ async def finalize_session(patient_id: str, other_id: str, other_name: str, meet
         response = await llm.ainvoke([
             HumanMessage(content=(
                 "Condense these notes from one video call into a short, warm, one-paragraph "
-                "summary (2-3 sentences) suitable for a memory-care patient's family to read "
-                "back later:\n\n" + joined
+                "summary (2-3 sentences), written directly TO the memory-care patient for "
+                "them to read back later. Address the patient as \"you\" throughout — never "
+                f"write \"the patient\" or \"Patient\". Refer to the other person as {other_name}. "
+                f"For example: \"You had lunch with Priya, and {other_name} reminded you she's "
+                f"your granddaughter. {other_name} will call you next Tuesday at 5pm.\"\n\n"
+                "Notes:\n" + joined
             ))
         ])
         paragraph = response.content if isinstance(response.content, str) else joined
