@@ -8,7 +8,7 @@ from langchain_core.messages import HumanMessage
 from langchain_core.documents import Document
 
 from rag_engine import vector_store
-from graph import agent_app
+from graph import agent_app, general_agent_app, patient_agent_app
 from scheduling_graph import check_and_schedule
 from conversation_memory import summarize_chunk, get_session_summary, finalize_session, read_history
 
@@ -34,6 +34,10 @@ class IngestBatchRequest(BaseModel):
 
 class TranscriptInput(BaseModel):
     chunk: str
+
+class OrchestrateRequest(BaseModel):
+    text: str
+    is_patient: bool = False
 
 class ConversationChunkRequest(BaseModel):
     patient_id: str
@@ -119,6 +123,47 @@ async def process_transcript_chunk(payload: TranscriptInput):
             "query": tool_query,
             "hud_card_data": tool_output,
             "assistant_response": final_content,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/agent/orchestrate")
+async def orchestrate(payload: OrchestrateRequest):
+    """Single automatic entry point replacing the old manual ingest-toggle /
+    retrieve-toggle / scheduling-background-task trio: one LangGraph turn per
+    ~30s transcript chunk decides whether to store_lore, schedule_calendar_event,
+    and/or (patient-only) rag_context_lookup — any combination, or nothing."""
+    try:
+        app_to_use = patient_agent_app if payload.is_patient else general_agent_app
+        final_state = await app_to_use.ainvoke({"messages": [HumanMessage(content=payload.text)]})
+        messages = final_state["messages"]
+
+        # Collect ALL tool calls/results this turn — unlike the old single-tool
+        # process-chunk endpoint, this graph can legitimately fire multiple
+        # tools (e.g. store_lore AND schedule_calendar_event) in one pass.
+        actions = []
+        hud_triggered = False
+        hud_query = None
+        hud_card_data = None
+
+        for msg in messages:
+            if getattr(msg, "tool_calls", None):
+                for call in msg.tool_calls:
+                    if call.get("name") == "rag_context_lookup":
+                        hud_triggered = True
+                        hud_query = call.get("args", {}).get("query")
+            if msg.type == "tool":
+                if msg.name == "rag_context_lookup":
+                    hud_card_data = msg.content
+                else:
+                    actions.append({"tool": msg.name, "result": msg.content})
+
+        return {
+            "hud_triggered": hud_triggered,
+            "query": hud_query,
+            "hud_card_data": hud_card_data,
+            "assistant_response": _extract_text(messages[-1].content) if messages else "",
+            "actions": actions,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

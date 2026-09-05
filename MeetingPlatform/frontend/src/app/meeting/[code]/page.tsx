@@ -13,13 +13,10 @@ import {
   Check,
   Copy,
   Crown,
-  Database,
-  DatabaseZap,
   Loader2,
   Mic,
   MicOff,
   PhoneOff,
-  ScanSearch,
   Sparkles,
   Users,
   Video,
@@ -30,6 +27,7 @@ import toast from "react-hot-toast";
 import { useIdentity } from "@/hooks/useIdentity";
 import { useWebRTC } from "@/hooks/useWebRTC";
 import { useConversationMemory } from "@/hooks/useConversationMemory";
+import { useRagOrchestrator } from "@/hooks/useRagOrchestrator";
 import { useSpeakingDetection } from "@/hooks/useSpeakingDetection";
 import { meetings, ApiError } from "@/lib/api";
 import type { ConnectionStatus, ConversationHistoryEntry, RagQueryResponse, RemoteParticipant } from "@/types";
@@ -257,12 +255,13 @@ export default function MeetingRoomPage() {
   const webrtcUserId = joinState.phase === "ready" ? userId : undefined;
   const webrtcUserName = joinState.phase === "ready" ? userName : undefined;
 
-  // Populated after useConversationMemory is created below — declared first
-  // (as a ref, not state) purely to break the ordering cycle: useWebRTC needs
-  // a stable-identity callback to call on every final caption, but that
-  // callback belongs to useConversationMemory, which itself needs
-  // `participants` — and `participants` only exists once useWebRTC has run.
+  // Populated after useConversationMemory/useRagOrchestrator are created
+  // below — declared first (as refs, not state) purely to break the
+  // ordering cycle: useWebRTC needs stable-identity callbacks to call on
+  // every final caption, but those callbacks belong to hooks that
+  // themselves need `participants` — which only exists once useWebRTC has run.
   const conversationMemoryRef = useRef<{ addUtterance: (fromUserId: string, text: string) => void } | null>(null);
+  const ragOrchestratorRef = useRef<{ addUtterance: (fromUserId: string, text: string) => void } | null>(null);
 
   const {
     localStream,
@@ -274,19 +273,13 @@ export default function MeetingRoomPage() {
     micError,
     captionsEnabled,
     localCaption,
-    ingestionEnabled,
-    retrievalEnabled,
-    hudCard,
-    hudLoading,
     toggleMute,
     toggleCamera,
     toggleCaptions,
-    toggleIngestion,
-    toggleRetrieval,
-    dismissHud,
     leaveRoom,
   } = useWebRTC(meetingCode, webrtcUserId, webrtcUserName, (fromUserId, text) => {
     conversationMemoryRef.current?.addUtterance(fromUserId, text);
+    ragOrchestratorRef.current?.addUtterance(fromUserId, text);
   });
 
   // 1:1 calls only (confirmed scope) — the dyad partner is simply "the one
@@ -299,6 +292,13 @@ export default function MeetingRoomPage() {
   useEffect(() => {
     conversationMemoryRef.current = conversationMemory;
   }, [conversationMemory]);
+
+  // Runs for every participant (not just the patient) — the automated
+  // LangGraph orchestrator replacing the old manual ingest/retrieve toggles.
+  const ragOrchestrator = useRagOrchestrator(isPatient, webrtcUserId);
+  useEffect(() => {
+    ragOrchestratorRef.current = ragOrchestrator;
+  }, [ragOrchestrator]);
 
   // Meeting duration timer
   useEffect(() => {
@@ -476,9 +476,13 @@ export default function MeetingRoomPage() {
 
   return (
     <div style={{ minHeight: "100vh", padding: "1.5rem", display: "flex", flexDirection: "column" }}>
-      {/* HUD — background context surfaced by the rag agent while retrieval is on */}
-      {retrievalEnabled && (hudLoading || hudCard) && (
-        <HudCard loading={hudLoading} data={hudCard} onDismiss={dismissHud} />
+      {/* HUD — background context automatically surfaced by the LangGraph
+          orchestrator for the patient only (see useRagOrchestrator; the
+          non-patient graph variant never even has the lookup tool bound,
+          so hudCard/hudLoading can never be true for a non-patient client —
+          this isPatient check is defense-in-depth, not the real guarantee). */}
+      {isPatient && (ragOrchestrator.hudLoading || ragOrchestrator.hudCard) && (
+        <HudCard loading={ragOrchestrator.hudLoading} data={ragOrchestrator.hudCard} onDismiss={ragOrchestrator.dismissHud} />
       )}
 
       {/* Conversation memory — patient-only, fully automatic (see useConversationMemory) */}
@@ -606,20 +610,6 @@ export default function MeetingRoomPage() {
           title={captionsEnabled ? "Turn off live captions" : "Turn on live captions"}
         >
           {captionsEnabled ? <Captions size={24} /> : <CaptionsOff size={24} />}
-        </button>
-        <button
-          className={`mute-btn ${ingestionEnabled ? "mute-btn-active" : "mute-btn-muted"}`}
-          onClick={toggleIngestion}
-          title={ingestionEnabled ? "Stop adding your speech to shared memory" : "Start adding your speech to shared memory"}
-        >
-          {ingestionEnabled ? <DatabaseZap size={24} /> : <Database size={24} />}
-        </button>
-        <button
-          className={`mute-btn ${retrievalEnabled ? "mute-btn-active" : "mute-btn-muted"}`}
-          onClick={toggleRetrieval}
-          title={retrievalEnabled ? "Turn off context lookups" : "Turn on context lookups"}
-        >
-          {retrievalEnabled ? <ScanSearch size={24} /> : <BrainCircuit size={24} />}
         </button>
         <button className="btn btn-danger btn-icon-lg" onClick={handleLeave} title="Leave meeting">
           <PhoneOff size={22} />
