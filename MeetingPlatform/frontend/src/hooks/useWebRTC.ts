@@ -21,7 +21,8 @@ import type {
   CaregiverTipPayload,
 } from "@/types";
 
-const CAPTION_CLEAR_MS = 4000;
+// Long enough for a slower reader to finish the line before it disappears.
+const CAPTION_CLEAR_MS = 8000;
 
 export function useWebRTC(
   meetingCode: string,

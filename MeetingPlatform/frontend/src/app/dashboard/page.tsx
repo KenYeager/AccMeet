@@ -58,7 +58,7 @@ export default function DashboardPage() {
               <Mic size={22} color="white" />
             </div>
             <h1 style={{ fontSize: "1.5rem", fontWeight: 700 }}>What&apos;s your name?</h1>
-            <p style={{ color: "var(--color-text-secondary)", fontSize: "0.9375rem", marginTop: "0.375rem" }}>
+            <p style={{ color: "var(--color-text-secondary)", fontSize: "var(--fs-body)", marginTop: "0.375rem" }}>
               This is how others will see you in meetings.
             </p>
           </div>
@@ -168,11 +168,12 @@ export default function DashboardPage() {
                 value={nameInput}
                 onChange={e => setNameInput(e.target.value)}
                 maxLength={50}
-                style={{ width: "12rem", padding: "0.5rem 0.75rem", fontSize: "0.875rem" }}
+                style={{ width: "12rem", padding: "0.5rem 0.75rem" }}
                 onKeyDown={e => e.key === "Enter" && handleSaveName()}
               />
-              <button className="btn btn-ghost" onClick={handleSaveName} style={{ padding: "0.5rem" }} title="Save name">
+              <button className="btn btn-ghost" onClick={handleSaveName} style={{ padding: "0.5rem 0.75rem" }}>
                 <Check size={16} />
+                Save
               </button>
             </>
           ) : (
@@ -180,16 +181,16 @@ export default function DashboardPage() {
               <div className="avatar" style={{ width: "2rem", height: "2rem", fontSize: "0.75rem" }}>
                 {getInitials(userName)}
               </div>
-              <span style={{ fontSize: "0.9375rem", color: "var(--color-text-secondary)" }}>
+              <span style={{ fontSize: "var(--fs-body)", color: "var(--color-text-secondary)" }}>
                 {userName}
               </span>
               <button
                 className="btn btn-ghost"
                 onClick={() => { setNameInput(userName); setIsEditingName(true); }}
-                style={{ padding: "0.5rem" }}
-                title="Change name"
+                style={{ padding: "0.5rem 0.75rem" }}
               >
                 <Pencil size={14} />
+                Change
               </button>
             </>
           )}
@@ -216,23 +217,27 @@ export default function DashboardPage() {
           style={{
             display: "flex",
             alignItems: "center",
-            gap: "0.75rem",
-            padding: "1rem 1.25rem",
+            gap: "1rem",
+            padding: "1.5rem",
             marginBottom: "1.5rem",
             cursor: "pointer",
+            borderColor: isPatientDevice ? "rgba(96, 165, 250, 0.45)" : undefined,
           }}
         >
           <input
             type="checkbox"
             checked={isPatientDevice}
             onChange={e => setIsPatientDevice(e.target.checked)}
-            style={{ width: "1.125rem", height: "1.125rem", cursor: "pointer", flexShrink: 0 }}
+            style={{ width: "1.75rem", height: "1.75rem", cursor: "pointer", flexShrink: 0 }}
           />
-          <HeartPulse size={18} color="var(--color-blue-400)" style={{ flexShrink: 0 }} />
+          <HeartPulse size={26} color="var(--color-blue-400)" style={{ flexShrink: 0 }} />
           <div>
-            <div style={{ fontSize: "0.9375rem", fontWeight: 600 }}>This is a memory-care patient&apos;s device</div>
-            <div style={{ fontSize: "0.8125rem", color: "var(--color-text-secondary)" }}>
-              Every meeting created or joined from here will show the live context bubble and conversation history.
+            <div style={{ fontSize: "var(--fs-lead)", fontWeight: 600, marginBottom: "0.25rem" }}>
+              This is a memory-care patient&apos;s device
+            </div>
+            <div style={{ fontSize: "var(--fs-body)", color: "var(--color-text-secondary)", lineHeight: 1.5 }}>
+              Turns on the larger, calmer screen with on-screen reminders and a record of past
+              calls. Leave this off on a family member&apos;s phone or laptop.
             </div>
           </div>
         </label>
@@ -262,7 +267,7 @@ export default function DashboardPage() {
             <h2 style={{ fontSize: "1.125rem", fontWeight: 600, marginBottom: "0.5rem" }}>
               New meeting
             </h2>
-            <p style={{ color: "var(--color-text-secondary)", fontSize: "0.9375rem", marginBottom: "1.5rem", lineHeight: 1.6 }}>
+            <p style={{ color: "var(--color-text-secondary)", fontSize: "var(--fs-body)", marginBottom: "1.5rem", lineHeight: 1.6 }}>
               Create a room instantly. Share the code with your team and start talking.
             </p>
             <button
@@ -296,7 +301,7 @@ export default function DashboardPage() {
             <h2 style={{ fontSize: "1.125rem", fontWeight: 600, marginBottom: "0.5rem" }}>
               Join a meeting
             </h2>
-            <p style={{ color: "var(--color-text-secondary)", fontSize: "0.9375rem", marginBottom: "1.5rem", lineHeight: 1.6 }}>
+            <p style={{ color: "var(--color-text-secondary)", fontSize: "var(--fs-body)", marginBottom: "1.5rem", lineHeight: 1.6 }}>
               Have a meeting code? Enter it below to join.
             </p>
             <form onSubmit={handleJoinMeeting} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>

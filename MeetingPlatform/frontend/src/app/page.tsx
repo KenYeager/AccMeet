@@ -1,28 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { Mic, Users, Zap, Shield } from "lucide-react";
+import { BookOpen, Heart, Lightbulb, Sparkles } from "lucide-react";
 
 const features = [
   {
-    icon: Mic,
-    title: "Crystal-clear audio",
-    desc: "Peer-to-peer WebRTC audio — no server in the path, ultra-low latency.",
+    icon: Sparkles,
+    title: "Gentle reminders",
+    desc: "When someone comes up in conversation, a quiet on-screen card recalls who they are — so the thread never gets lost.",
   },
   {
-    icon: Zap,
-    title: "Instant meetings",
-    desc: "Create a room in one click. Share the code. Done.",
+    icon: Lightbulb,
+    title: "Support for the family",
+    desc: "If the same question comes around again, the person on the other end gets a kind suggestion for how to answer it.",
   },
   {
-    icon: Users,
-    title: "Up to 6 participants",
-    desc: "Perfect for standups, quick syncs, and small team calls.",
+    icon: BookOpen,
+    title: "A record of every call",
+    desc: "Each conversation is saved as a short story, kept separately for each person they talk to.",
   },
   {
-    icon: Shield,
-    title: "No downloads",
-    desc: "Runs entirely in your browser. Nothing to install.",
+    icon: Heart,
+    title: "Built to be easy",
+    desc: "Large text, clear buttons, nothing that vanishes on a timer. Runs in the browser — nothing to install.",
   },
 ];
 
@@ -43,7 +43,7 @@ export default function LandingPage() {
           margin: "0 auto 2rem",
           boxShadow: "0 0 40px rgba(99, 102, 241, 0.4)",
         }}>
-          <Mic size={28} color="white" />
+          <Heart size={28} color="white" />
         </div>
 
         {/* Headline */}
@@ -54,8 +54,8 @@ export default function LandingPage() {
           marginBottom: "1.25rem",
           letterSpacing: "-0.02em",
         }}>
-          Audio meetings,{" "}
-          <span className="gradient-text">instant.</span>
+          Every call,{" "}
+          <span className="gradient-text">easier to follow.</span>
         </h1>
 
         <p style={{
@@ -65,8 +65,9 @@ export default function LandingPage() {
           margin: "0 auto 2.5rem",
           lineHeight: 1.7,
         }}>
-          No downloads, no complexity. Create a room, share the code, start talking.
-          Powered by WebRTC for direct peer-to-peer audio.
+          Video calling built for people living with memory loss — and for the
+          families who call them. Names and faces are gently recalled on screen,
+          and nobody has to remember everything on their own.
         </p>
 
         {/* CTA */}
@@ -102,10 +103,10 @@ export default function LandingPage() {
               }}>
                 <f.icon size={18} />
               </div>
-              <h3 style={{ fontWeight: 600, fontSize: "0.9375rem", marginBottom: "0.375rem" }}>
+              <h3 style={{ fontWeight: 600, fontSize: "var(--fs-lead)", marginBottom: "0.5rem" }}>
                 {f.title}
               </h3>
-              <p style={{ fontSize: "0.875rem", color: "var(--color-text-secondary)", lineHeight: 1.6 }}>
+              <p style={{ fontSize: "var(--fs-body)", color: "var(--color-text-secondary)", lineHeight: 1.6 }}>
                 {f.desc}
               </p>
             </div>

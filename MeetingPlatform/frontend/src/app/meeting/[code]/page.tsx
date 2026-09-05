@@ -11,6 +11,8 @@ import {
   Captions,
   CaptionsOff,
   Check,
+  ChevronDown,
+  ChevronUp,
   Copy,
   Crown,
   Lightbulb,
@@ -109,7 +111,7 @@ function ParticipantTile({
       style={{
         position: "relative",
         overflow: "hidden",
-        aspectRatio: "4 / 3",
+        aspectRatio: "var(--tile-aspect)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -156,7 +158,7 @@ function ParticipantTile({
               {isMuted ? <MicOff size={11} /> : <Mic size={11} />}
             </div>
           </div>
-          <div style={{ fontSize: "0.9375rem" }}>{nameRow}</div>
+          <div style={{ fontSize: "var(--fs-body)" }}>{nameRow}</div>
         </div>
       )}
 
@@ -175,7 +177,7 @@ function ParticipantTile({
             background: "rgba(6, 11, 24, 0.65)",
             backdropFilter: "blur(6px)",
             borderRadius: "0.75rem",
-            fontSize: "0.8125rem",
+            fontSize: "var(--fs-label)",
           }}
         >
           {nameRow}
@@ -205,6 +207,9 @@ export default function MeetingRoomPage() {
   const [elapsed, setElapsed] = useState(0);
   const [codeCopied, setCodeCopied] = useState(false);
   const [nameInput, setNameInput] = useState("");
+  // Patient mode only — an accidental hang-up is a real failure mode when
+  // leaving also finalizes this call's conversation history.
+  const [confirmingLeave, setConfirmingLeave] = useState(false);
   const joinedAtRef = useRef<number | null>(null);
 
   // Validate the meeting and register as a participant before opening WebRTC.
@@ -307,13 +312,6 @@ export default function MeetingRoomPage() {
     ragOrchestratorRef.current = ragOrchestrator;
   }, [ragOrchestrator]);
 
-  // Caregiver tip auto-dismisses so it doesn't linger and clutter the call —
-  // a fresh tip resets the timer.
-  useEffect(() => {
-    if (!caregiverTip) return;
-    const timer = setTimeout(() => setCaregiverTip(null), 20000);
-    return () => clearTimeout(timer);
-  }, [caregiverTip]);
 
   // Meeting duration timer
   useEffect(() => {
@@ -373,10 +371,10 @@ export default function MeetingRoomPage() {
     return (
       <div className="page-center">
         <div className="glass-card fade-in container-sm" style={{ padding: "2.5rem" }}>
-          <h1 style={{ fontSize: "1.25rem", fontWeight: 700, marginBottom: "0.5rem" }}>
+          <h1 style={{ fontSize: "var(--fs-title)", fontWeight: 700, marginBottom: "0.5rem" }}>
             Join meeting {meetingCode}
           </h1>
-          <p style={{ color: "var(--color-text-secondary)", fontSize: "0.9375rem", marginBottom: "1.5rem" }}>
+          <p style={{ color: "var(--color-text-secondary)", fontSize: "var(--fs-body)", marginBottom: "1.5rem" }}>
             Enter your name to continue.
           </p>
           <form onSubmit={handleSubmitName} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
@@ -431,10 +429,10 @@ export default function MeetingRoomPage() {
           >
             <AlertTriangle size={24} />
           </div>
-          <h1 style={{ fontSize: "1.25rem", fontWeight: 700, marginBottom: "0.5rem" }}>
+          <h1 style={{ fontSize: "var(--fs-title)", fontWeight: 700, marginBottom: "0.5rem" }}>
             {joinState.title}
           </h1>
-          <p style={{ color: "var(--color-text-secondary)", fontSize: "0.9375rem", marginBottom: "1.75rem" }}>
+          <p style={{ color: "var(--color-text-secondary)", fontSize: "var(--fs-body)", marginBottom: "1.75rem" }}>
             {joinState.message}
           </p>
           <Link href="/dashboard" className="btn btn-primary" style={{ padding: "0.75rem 1.5rem" }}>
@@ -468,10 +466,10 @@ export default function MeetingRoomPage() {
           >
             <MicOff size={24} />
           </div>
-          <h1 style={{ fontSize: "1.25rem", fontWeight: 700, marginBottom: "0.5rem" }}>
+          <h1 style={{ fontSize: "var(--fs-title)", fontWeight: 700, marginBottom: "0.5rem" }}>
             Microphone unavailable
           </h1>
-          <p style={{ color: "var(--color-text-secondary)", fontSize: "0.9375rem", marginBottom: "1.75rem" }}>
+          <p style={{ color: "var(--color-text-secondary)", fontSize: "var(--fs-body)", marginBottom: "1.75rem" }}>
             {micError}
           </p>
           <div style={{ display: "flex", gap: "0.75rem", justifyContent: "center" }}>
@@ -490,7 +488,20 @@ export default function MeetingRoomPage() {
   const isHost = joinState.hostId === userId;
 
   return (
-    <div style={{ minHeight: "100vh", padding: "1.5rem", display: "flex", flexDirection: "column" }}>
+    <div
+      className={isPatient ? "patient-mode" : undefined}
+      style={{
+        // The patient screen is locked to the viewport and never scrolls —
+        // reaching the controls must never require finding a scrollbar.
+        // Everything below flexes to fit instead.
+        ...(isPatient
+          ? { height: "100dvh", overflow: "hidden" }
+          : { minHeight: "100vh" }),
+        padding: "1.5rem",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
       {/* HUD — background context automatically surfaced by the LangGraph
           orchestrator for the patient only (see useRagOrchestrator; the
           non-patient graph variant never even has the lookup tool bound,
@@ -507,65 +518,85 @@ export default function MeetingRoomPage() {
         <CaregiverTipCard tip={caregiverTip} onDismiss={() => setCaregiverTip(null)} />
       )}
 
-      {/* Conversation memory — patient-only, fully automatic (see useConversationMemory) */}
-      {isPatient && (
-        <>
-          <ContextBubble context={conversationMemory.currentContext} summary={conversationMemory.sessionSummary} />
-          <HistoryBubble
-            entries={conversationMemory.history}
-            loading={conversationMemory.historyLoading}
-            onOpen={conversationMemory.fetchHistory}
-          />
-        </>
-      )}
-
-      {/* Header */}
-      <div className="container-lg fade-in" style={{ marginBottom: "2rem" }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            flexWrap: "wrap",
-            gap: "1rem",
-          }}
-        >
+      {/* Header. The patient keeps the meeting code (they may need to read it
+          out to whoever is joining) plus the connection state in plain words,
+          but loses the participant count and duration timer — neither is
+          useful mid-call, and both cost attention and vertical space. */}
+      <div className="container-lg fade-in" style={{ marginBottom: "1.25rem", flexShrink: 0 }}>
+        {isPatient ? (
           <div style={{ display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
             <button
               className="meeting-code-badge"
               onClick={handleCopyCode}
-              title="Click to copy meeting code"
-              style={{ border: "1px solid rgba(59, 130, 246, 0.25)" }}
+              style={{ border: "1px solid rgba(59, 130, 246, 0.25)", padding: "0.5rem 1rem" }}
             >
               {meetingCode}
-              {codeCopied ? <Check size={14} /> : <Copy size={14} />}
+              {codeCopied ? <Check size={18} /> : <Copy size={18} />}
             </button>
-
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "var(--color-text-secondary)", fontSize: "0.875rem" }}>
-              <span className={statusDotClass(connectionStatus)} />
-              {statusLabel(connectionStatus)}
-            </div>
-          </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: "1.25rem", color: "var(--color-text-secondary)", fontSize: "0.875rem" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
-              <Users size={15} />
-              {participants.length + 1}
-            </div>
-            <span style={{ fontFamily: "'JetBrains Mono', 'Fira Code', monospace" }}>
-              {formatDuration(elapsed)}
+            <span style={{ fontSize: "var(--fs-label)", color: "var(--color-text-secondary)" }}>
+              {codeCopied ? "Code copied" : "Tap the code to copy it"}
             </span>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.625rem", color: "var(--color-text-secondary)", fontSize: "var(--fs-label)", marginLeft: "auto" }}>
+              <span className={statusDotClass(connectionStatus)} />
+              {connectionStatus === "connected"
+                ? participants.length > 0 ? `Talking to ${participants[0].user_name}` : "Waiting for them to join…"
+                : statusLabel(connectionStatus)}
+            </div>
           </div>
-        </div>
+        ) : (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: "1rem",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
+              <button
+                className="meeting-code-badge"
+                onClick={handleCopyCode}
+                title="Click to copy meeting code"
+                style={{ border: "1px solid rgba(59, 130, 246, 0.25)" }}
+              >
+                {meetingCode}
+                {codeCopied ? <Check size={14} /> : <Copy size={14} />}
+              </button>
+
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "var(--color-text-secondary)", fontSize: "var(--fs-label)" }}>
+                <span className={statusDotClass(connectionStatus)} />
+                {statusLabel(connectionStatus)}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: "1.25rem", color: "var(--color-text-secondary)", fontSize: "var(--fs-label)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
+                <Users size={15} />
+                {participants.length + 1}
+              </div>
+              <span style={{ fontFamily: "'JetBrains Mono', 'Fira Code', monospace" }}>
+                {formatDuration(elapsed)}
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Participant grid */}
-      <div className="container-lg" style={{ flex: 1 }}>
+      {/* Participant grid. --tile-min widens substantially in patient mode so
+          a 1:1 call fills the screen with the person's face rather than
+          sitting in a small grid cell. */}
+      <div className="container-lg" style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+            gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, var(--tile-min)), var(--tile-max)))",
+            justifyContent: "center",
             gap: "1.25rem",
+            // Absorbs whatever height is left once header, strip and controls
+            // have taken theirs — so expanding the history panel shrinks the
+            // video rather than pushing the controls off-screen.
+            ...(isPatient ? { flex: 1, minHeight: 0 } : {}),
           }}
         >
           <ParticipantTile
@@ -587,11 +618,27 @@ export default function MeetingRoomPage() {
         </div>
 
         {participants.length === 0 && (
-          <p style={{ textAlign: "center", color: "var(--color-text-muted)", marginTop: "2.5rem", fontSize: "0.9375rem" }}>
-            Waiting for others to join — share the code above.
+          <p style={{ textAlign: "center", color: "var(--color-text-muted)", marginTop: "2.5rem", fontSize: "var(--fs-body)" }}>
+            {isPatient ? "Waiting for them to join…" : "Waiting for others to join — share the code above."}
           </p>
         )}
       </div>
+
+      {/* Conversation memory — patient-only, fully automatic (see
+          useConversationMemory). These used to be two small floating bubbles
+          in opposite screen corners; they're now one predictable in-flow
+          strip directly under the video, so nothing overlaps the call and
+          the patient always finds them in the same place. */}
+      {isPatient && (
+        <div className="container-lg" style={{ marginTop: "1rem", display: "flex", flexDirection: "column", gap: "0.75rem", flexShrink: 0 }}>
+          <ContextBubble context={conversationMemory.currentContext} summary={conversationMemory.sessionSummary} />
+          <HistoryBubble
+            entries={conversationMemory.history}
+            loading={conversationMemory.historyLoading}
+            onOpen={conversationMemory.fetchHistory}
+          />
+        </div>
+      )}
 
       {/* Live captions */}
       {captionsEnabled && (
@@ -605,37 +652,95 @@ export default function MeetingRoomPage() {
         />
       )}
 
-      {/* Controls */}
+      {/* Controls. Every button now carries a visible text label — the old
+          bare circles put their meaning in a `title` tooltip, which a touch
+          user can never surface. Colour is never the only signal: state is
+          in the words, and Leave is a pill rather than a circle so it can't
+          be mistaken for a muted mic. */}
       <div
         className="container-lg fade-in"
-        style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "1.5rem", padding: "2rem 0 0.5rem" }}
+        style={{ display: "flex", justifyContent: "center", alignItems: "flex-start", flexWrap: "wrap", gap: "1.75rem", padding: "1.25rem 0 0.25rem", flexShrink: 0 }}
       >
         <button
-          className={`mute-btn ${isMuted ? "mute-btn-muted" : "mute-btn-active"}`}
+          className={`control-btn ${isMuted ? "control-btn-alert" : "control-btn-on"}`}
           onClick={toggleMute}
-          title={isMuted ? "Unmute" : "Mute"}
         >
-          {isMuted ? <MicOff size={24} /> : <Mic size={24} />}
+          <span className="control-btn-face">{isMuted ? <MicOff /> : <Mic />}</span>
+          <span className="control-btn-label">{isMuted ? "Muted" : "Mic on"}</span>
         </button>
+
         <button
-          className={`mute-btn ${isCameraOff ? "mute-btn-muted" : "mute-btn-active"}`}
+          className={`control-btn ${isCameraOff ? "control-btn-off" : "control-btn-on"}`}
           onClick={toggleCamera}
           disabled={!hasCamera}
-          title={!hasCamera ? "No camera detected" : isCameraOff ? "Turn camera on" : "Turn camera off"}
-          style={!hasCamera ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
         >
-          {isCameraOff ? <VideoOff size={24} /> : <Video size={24} />}
+          <span className="control-btn-face">{isCameraOff ? <VideoOff /> : <Video />}</span>
+          <span className="control-btn-label">
+            {!hasCamera ? "No camera" : isCameraOff ? "Camera off" : "Camera on"}
+          </span>
         </button>
+
         <button
-          className={`mute-btn ${captionsEnabled ? "mute-btn-active" : "mute-btn-muted"}`}
+          className={`control-btn ${captionsEnabled ? "control-btn-on" : "control-btn-off"}`}
           onClick={toggleCaptions}
-          title={captionsEnabled ? "Turn off live captions" : "Turn on live captions"}
         >
-          {captionsEnabled ? <Captions size={24} /> : <CaptionsOff size={24} />}
+          <span className="control-btn-face">{captionsEnabled ? <Captions /> : <CaptionsOff />}</span>
+          <span className="control-btn-label">{captionsEnabled ? "Subtitles on" : "Subtitles off"}</span>
         </button>
-        <button className="btn btn-danger btn-icon-lg" onClick={handleLeave} title="Leave meeting">
-          <PhoneOff size={22} />
+
+        <button
+          className="control-leave"
+          onClick={() => (isPatient ? setConfirmingLeave(true) : handleLeave())}
+        >
+          <PhoneOff />
+          Leave call
         </button>
+      </div>
+
+      {isPatient && confirmingLeave && (
+        <LeaveConfirm onCancel={() => setConfirmingLeave(false)} onConfirm={handleLeave} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Patient-mode-only guard on hanging up. Leaving also finalizes and persists
+ * this call's conversation history, so a mis-tap costs more than a dropped
+ * call — and the safe option is the one that's visually dominant.
+ */
+function LeaveConfirm({ onCancel, onConfirm }: { onCancel: () => void; onConfirm: () => void }) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 100,
+        background: "rgba(6, 11, 24, 0.8)",
+        backdropFilter: "blur(4px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "1.5rem",
+      }}
+    >
+      <div className="glass-card fade-in" style={{ padding: "2.5rem", maxWidth: "32rem", textAlign: "center" }}>
+        <h2 style={{ fontSize: "var(--fs-title)", fontWeight: 700, margin: "0 0 0.75rem" }}>
+          End this call?
+        </h2>
+        <p style={{ fontSize: "var(--fs-body)", color: "var(--color-text-secondary)", lineHeight: 1.5, margin: "0 0 2rem" }}>
+          You can always call again later.
+        </p>
+        <div style={{ display: "flex", gap: "1rem", justifyContent: "center", flexWrap: "wrap" }}>
+          <button className="btn btn-primary" onClick={onCancel} style={{ padding: "1rem 2rem", fontSize: "var(--fs-body)" }}>
+            Stay on the call
+          </button>
+          <button className="btn btn-danger" onClick={onConfirm} style={{ padding: "1rem 2rem", fontSize: "var(--fs-body)" }}>
+            Yes, end call
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -664,32 +769,33 @@ function HudCard({
         top: "1.5rem",
         right: "1.5rem",
         zIndex: 50,
-        width: "20rem",
+        width: "var(--overlay-width)",
         maxWidth: "calc(100vw - 3rem)",
-        padding: "1rem 1.125rem",
-        background: "rgba(6, 11, 24, 0.85)",
+        padding: "1.125rem 1.25rem",
+        background: "rgba(6, 11, 24, 0.92)",
         backdropFilter: "blur(8px)",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.5rem" }}>
-        <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.75rem", fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase", color: "var(--color-blue-400)" }}>
-          <BrainCircuit size={14} />
-          Context
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", marginBottom: "0.625rem" }}>
+        <span style={panelLabelStyle}>
+          <BrainCircuit size={16} />
+          Remember
         </span>
         {!loading && (
           <button
             onClick={onDismiss}
-            title="Dismiss"
-            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-muted)", display: "flex", padding: 0 }}
+            aria-label="Dismiss reminder"
+            style={{ display: "flex", alignItems: "center", gap: "0.375rem", background: "none", border: "none", cursor: "pointer", color: "var(--color-text-secondary)", font: "inherit", fontSize: "var(--fs-label)", padding: "0.25rem" }}
           >
-            <X size={16} />
+            Hide
+            <X size={18} />
           </button>
         )}
       </div>
 
       {loading && !data && (
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "var(--color-text-secondary)", fontSize: "0.875rem" }}>
-          <Loader2 size={16} className="animate-spin" />
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "var(--color-text-secondary)", fontSize: "var(--fs-body)" }}>
+          <Loader2 size={18} className="animate-spin" />
           Looking that up…
         </div>
       )}
@@ -697,11 +803,11 @@ function HudCard({
       {data && (
         <div>
           {data.query && (
-            <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", margin: "0 0 0.375rem" }}>
+            <p style={{ fontSize: "var(--fs-label)", color: "var(--color-text-muted)", margin: "0 0 0.375rem" }}>
               &quot;{data.query}&quot;
             </p>
           )}
-          <p style={{ fontSize: "0.875rem", lineHeight: 1.5, color: "white", margin: 0, whiteSpace: "pre-wrap" }}>
+          <p style={{ fontSize: "var(--fs-body)", lineHeight: 1.5, color: "white", margin: 0, whiteSpace: "pre-wrap" }}>
             {data.hud_card_data}
           </p>
         </div>
@@ -726,92 +832,92 @@ function CaregiverTipCard({ tip, onDismiss }: { tip: CaregiverTipPayload; onDism
         top: "1.5rem",
         right: "1.5rem",
         zIndex: 50,
-        width: "22rem",
+        width: "var(--overlay-width)",
         maxWidth: "calc(100vw - 3rem)",
-        padding: "1rem 1.125rem",
-        background: "rgba(28, 20, 4, 0.9)",
+        padding: "1.125rem 1.25rem",
+        background: "rgba(28, 20, 4, 0.92)",
         border: "1px solid rgba(217, 158, 46, 0.35)",
         backdropFilter: "blur(8px)",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.5rem" }}>
-        <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.75rem", fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase", color: "#e0a530" }}>
-          <Lightbulb size={14} />
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", marginBottom: "0.625rem" }}>
+        <span style={{ ...panelLabelStyle, color: "#e0a530" }}>
+          <Lightbulb size={16} />
           Gentle reminder
         </span>
         <button
           onClick={onDismiss}
-          title="Dismiss"
-          style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-muted)", display: "flex", padding: 0 }}
+          aria-label="Dismiss suggestion"
+          style={{ display: "flex", alignItems: "center", gap: "0.375rem", background: "none", border: "none", cursor: "pointer", color: "var(--color-text-secondary)", font: "inherit", fontSize: "var(--fs-label)", padding: "0.25rem" }}
         >
-          <X size={16} />
+          Hide
+          <X size={18} />
         </button>
       </div>
 
       {tip.repeated_topic && (
-        <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", margin: "0 0 0.375rem" }}>
+        <p style={{ fontSize: "var(--fs-label)", color: "var(--color-text-secondary)", margin: "0 0 0.375rem" }}>
           They may be {tip.repeated_topic}
         </p>
       )}
-      <p style={{ fontSize: "0.875rem", lineHeight: 1.5, color: "white", margin: 0, whiteSpace: "pre-wrap" }}>
+      <p style={{ fontSize: "var(--fs-body)", lineHeight: 1.5, color: "white", margin: 0, whiteSpace: "pre-wrap" }}>
         {tip.suggestion}
       </p>
     </div>
   );
 }
 
+const panelLabelStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.5rem",
+  fontSize: "var(--fs-label)",
+  fontWeight: 700,
+  letterSpacing: "0.03em",
+  textTransform: "uppercase",
+  color: "var(--color-accent-label)",
+};
+
 /**
- * Top-left bubble showing the live "what's being talked about right now"
- * phrase — updates every ~30s (see useConversationMemory). Click expands it
- * into the running summary of THIS call so far.
+ * Persistent "what's being talked about right now" strip, sitting in-flow
+ * directly under the video and updating every ~30s (see
+ * useConversationMemory). Tapping it reveals the running summary of the
+ * whole call so far.
+ *
+ * Previously a small floating corner bubble whose one meaningful sentence
+ * was truncated to a single ellipsized line — the text now wraps in full,
+ * since that sentence is the entire point of the feature.
  */
 function ContextBubble({ context, summary }: { context: string; summary: string }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div
-      className="glass-card fade-in"
-      onClick={() => setExpanded(prev => !prev)}
-      title={expanded ? "Click to collapse" : "Click to see the full summary of this call"}
-      style={{
-        position: "fixed",
-        top: "1.5rem",
-        left: "1.5rem",
-        zIndex: 50,
-        width: expanded ? "22rem" : "auto",
-        maxWidth: "calc(100vw - 3rem)",
-        padding: expanded ? "1rem 1.125rem" : "0.625rem 1rem",
-        background: "rgba(6, 11, 24, 0.85)",
-        backdropFilter: "blur(8px)",
-        cursor: "pointer",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem" }}>
-        <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.75rem", fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase", color: "var(--color-blue-400)" }}>
-          <Sparkles size={14} />
+    <div className="glass-card fade-in" style={{ padding: "1rem 1.25rem", background: "rgba(6, 11, 24, 0.85)" }}>
+      <button
+        onClick={() => setExpanded(prev => !prev)}
+        aria-expanded={expanded}
+        style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem",
+          width: "100%", background: "none", border: "none", padding: 0,
+          cursor: "pointer", color: "inherit", font: "inherit", textAlign: "left",
+        }}
+      >
+        <span style={panelLabelStyle}>
+          <Sparkles size={16} />
           Right now
         </span>
-        {expanded && (
-          <button
-            onClick={e => { e.stopPropagation(); setExpanded(false); }}
-            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-muted)", display: "flex", padding: 0 }}
-          >
-            <X size={16} />
-          </button>
-        )}
-      </div>
+        <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "var(--fs-label)", color: "var(--color-text-secondary)", flexShrink: 0 }}>
+          {expanded ? "Hide" : "More"}
+          {expanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+        </span>
+      </button>
 
-      {!expanded && (
-        <p style={{
-          fontSize: "0.875rem", color: "white", margin: "0.25rem 0 0", maxWidth: "16rem",
-          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-        }}>
-          {context || "Listening…"}
-        </p>
-      )}
+      <p style={{ fontSize: "var(--fs-body)", lineHeight: 1.5, color: "white", margin: "0.5rem 0 0" }}>
+        {context || "Listening…"}
+      </p>
 
       {expanded && (
-        <p style={{ fontSize: "0.875rem", lineHeight: 1.5, color: "white", margin: "0.5rem 0 0", whiteSpace: "pre-wrap" }}>
+        <p style={{ fontSize: "var(--fs-body)", lineHeight: 1.6, color: "var(--color-text-secondary)", margin: "1rem 0 0", whiteSpace: "pre-wrap" }}>
           {summary || "Nothing summarized yet — keep talking for about 30 seconds."}
         </p>
       )}
@@ -820,9 +926,12 @@ function ContextBubble({ context, summary }: { context: string; summary: string 
 }
 
 /**
- * Bottom-right bubble — click fetches and shows the story-style history of
- * PAST calls with this exact other participant (never mixed with anyone
- * else's history — see conversation_memory.py's per-dyad file scoping).
+ * One large labelled button that opens the story-style history of PAST calls
+ * with this exact other participant (never mixed with anyone else's history
+ * — see conversation_memory.py's per-dyad file scoping).
+ *
+ * Was a small bottom-right bubble that was a clickable <div>: no button
+ * semantics, no keyboard access, and no visible cue that it could be opened.
  */
 function HistoryBubble({
   entries,
@@ -842,60 +951,45 @@ function HistoryBubble({
   };
 
   return (
-    <div
-      className="glass-card fade-in"
-      onClick={handleClick}
-      title={expanded ? "Click to collapse" : "Click to see past conversations"}
-      style={{
-        position: "fixed",
-        bottom: "1.5rem",
-        right: "1.5rem",
-        zIndex: 50,
-        width: expanded ? "22rem" : "auto",
-        maxWidth: "calc(100vw - 3rem)",
-        maxHeight: expanded ? "60vh" : "auto",
-        display: "flex",
-        flexDirection: "column",
-        padding: expanded ? "1rem 1.125rem" : "0.625rem 1rem",
-        background: "rgba(6, 11, 24, 0.85)",
-        backdropFilter: "blur(8px)",
-        cursor: "pointer",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem", flexShrink: 0 }}>
-        <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.75rem", fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase", color: "var(--color-blue-400)" }}>
-          <BookOpen size={14} />
-          Past conversations
+    <div className="glass-card fade-in" style={{ background: "rgba(6, 11, 24, 0.85)", display: "flex", flexDirection: "column", maxHeight: expanded ? "32vh" : undefined }}>
+      <button
+        onClick={handleClick}
+        aria-expanded={expanded}
+        style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem",
+          width: "100%", background: "none", border: "none", padding: "1rem 1.25rem",
+          cursor: "pointer", color: "inherit", font: "inherit", textAlign: "left", flexShrink: 0,
+        }}
+      >
+        <span style={panelLabelStyle}>
+          <BookOpen size={16} />
+          Our last talks
         </span>
-        {expanded && (
-          <button
-            onClick={e => { e.stopPropagation(); setExpanded(false); }}
-            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-muted)", display: "flex", padding: 0 }}
-          >
-            <X size={16} />
-          </button>
-        )}
-      </div>
+        <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "var(--fs-label)", color: "var(--color-text-secondary)", flexShrink: 0 }}>
+          {expanded ? "Hide" : "Open"}
+          {expanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+        </span>
+      </button>
 
       {expanded && (
-        <div style={{ overflowY: "auto", marginTop: "0.625rem" }} onClick={e => e.stopPropagation()}>
+        <div style={{ overflowY: "auto", padding: "0 1.25rem 1.25rem" }}>
           {loading && (
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "var(--color-text-secondary)", fontSize: "0.875rem" }}>
-              <Loader2 size={16} className="animate-spin" />
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "var(--color-text-secondary)", fontSize: "var(--fs-body)" }}>
+              <Loader2 size={18} className="animate-spin" />
               Loading…
             </div>
           )}
           {!loading && entries.length === 0 && (
-            <p style={{ fontSize: "0.875rem", color: "var(--color-text-muted)", margin: 0 }}>
+            <p style={{ fontSize: "var(--fs-body)", color: "var(--color-text-secondary)", margin: 0 }}>
               No past conversations with this person yet.
             </p>
           )}
           {!loading && entries.map((entry, i) => (
-            <div key={i} style={{ marginBottom: "0.75rem" }}>
-              <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", margin: "0 0 0.25rem" }}>
+            <div key={i} style={{ marginBottom: "1.25rem" }}>
+              <p style={{ fontSize: "var(--fs-label)", color: "var(--color-text-muted)", margin: "0 0 0.375rem" }}>
                 {entry.timestamp}
               </p>
-              <p style={{ fontSize: "0.875rem", lineHeight: 1.5, color: "white", margin: 0 }}>
+              <p style={{ fontSize: "var(--fs-body)", lineHeight: 1.6, color: "white", margin: 0 }}>
                 {entry.summary}
               </p>
             </div>
@@ -913,7 +1007,7 @@ function HistoryBubble({
 function CaptionBar({ entries }: { entries: { id: string; name: string; text: string }[] }) {
   if (entries.length === 0) return null;
   return (
-    <div className="container-lg fade-in" style={{ display: "flex", justifyContent: "center", padding: "0 0 0.75rem" }}>
+    <div className="container-lg fade-in" style={{ display: "flex", justifyContent: "center", padding: "0.75rem 0 0", flexShrink: 0 }}>
       <div
         style={{
           maxWidth: "48rem",
@@ -928,8 +1022,8 @@ function CaptionBar({ entries }: { entries: { id: string; name: string; text: st
         }}
       >
         {entries.map(entry => (
-          <p key={entry.id} style={{ fontSize: "0.9375rem", lineHeight: 1.4, color: "white", margin: 0 }}>
-            <span style={{ fontWeight: 600, color: "var(--color-blue-400)" }}>{entry.name}: </span>
+          <p key={entry.id} style={{ fontSize: "var(--fs-lead)", lineHeight: 1.45, color: "white", margin: 0 }}>
+            <span style={{ fontWeight: 700, color: "var(--color-accent-label)" }}>{entry.name}: </span>
             {entry.text}
           </p>
         ))}

@@ -10,7 +10,9 @@ from langchain_core.documents import Document
 from rag_engine import vector_store
 from graph import agent_app, general_agent_app, patient_agent_app
 from scheduling_graph import check_and_schedule
-from conversation_memory import summarize_chunk, get_session_summary, finalize_session, read_history
+from conversation_memory import (
+    summarize_chunk, get_session_summary, finalize_session, read_history, sweep_abandoned,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -199,6 +201,10 @@ async def conversation_finalize(payload: ConversationFinalizeRequest, background
 @app.get("/api/conversation/history")
 async def conversation_history(patient_id: str, other_id: str, other_name: str):
     try:
+        # Recover any earlier call that stopped mid-flight without finalizing
+        # (tab closed, backend restarted, other participant hung up first) so
+        # its conversation still shows up here rather than being lost.
+        await sweep_abandoned(patient_id, other_id, other_name)
         return {"entries": read_history(patient_id, other_id, other_name)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -73,9 +73,21 @@ _chunk_llm = llm.with_structured_output(ChunkSummary)
 
 # In-memory running summary for the CURRENT call only, keyed by the triple
 # that identifies one dyad's one call. Cleared by finalize_session().
+#
+# This is a cache, NOT the source of truth: every line is also appended to a
+# per-call .pending file as it arrives. An in-memory-only design silently lost
+# whole calls whenever the process restarted (uvicorn --reload does this on
+# every code edit), the tab was closed instead of pressing Leave, or the other
+# participant hung up first — in each case finalize either never ran or ran
+# against an empty dict, and an hour of conversation vanished with no error.
 _sessions: dict[tuple[str, str, str], list[str]] = {}
 
 _HEADER_RE = re.compile(r"=== Call with (.+?) on (.+?) ===")
+
+# A .pending file whose last write is older than this is treated as an
+# abandoned call and finalized on the next history read. Chunks arrive every
+# ~30s, so an in-progress call's file is never anywhere near this stale.
+_ABANDONED_AFTER_SECONDS = 150
 
 
 def _slugify(value: str) -> str:
@@ -88,6 +100,31 @@ def _dyad_file_path(patient_id: str, other_id: str, other_name: str) -> Path:
     patient_dir.mkdir(parents=True, exist_ok=True)
     filename = f"{_slugify(other_name)}_{other_id[:6]}.txt"
     return patient_dir / filename
+
+
+def _pending_file_path(patient_id: str, other_id: str, other_name: str, meeting_code: str) -> Path:
+    """Write-ahead log for one in-progress call, sitting beside that dyad's
+    history file. Survives a process restart, so a call's lines can still be
+    condensed afterwards instead of being lost with the in-memory dict."""
+    dyad = _dyad_file_path(patient_id, other_id, other_name)
+    return dyad.with_suffix(f".{_slugify(meeting_code)}.pending")
+
+
+def _append_pending(patient_id: str, other_id: str, other_name: str, meeting_code: str, line: str) -> None:
+    path = _pending_file_path(patient_id, other_id, other_name, meeting_code)
+    try:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(line.replace("\n", " ").strip() + "\n")
+    except Exception:
+        # Never let the write-ahead log break the live call — the in-memory
+        # copy is still good enough for this process's lifetime.
+        logger.exception("could not append pending line for %s", path)
+
+
+def _read_pending(path: Path) -> list[str]:
+    if not path.exists():
+        return []
+    return [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
 async def summarize_chunk(
@@ -150,6 +187,7 @@ async def summarize_chunk(
         result = ChunkSummary(current_context="Conversation in progress…", summary_line=text[:200])
 
     _sessions.setdefault(key, []).append(result.summary_line)
+    _append_pending(patient_id, other_id, other_name, meeting_code, result.summary_line)
     return result
 
 
@@ -159,7 +197,13 @@ def get_session_summary(patient_id: str, other_id: str, meeting_code: str) -> st
 
 async def finalize_session(patient_id: str, other_id: str, other_name: str, meeting_code: str) -> None:
     key = (patient_id, other_id, meeting_code)
-    lines = _sessions.pop(key, [])
+    pending_path = _pending_file_path(patient_id, other_id, other_name, meeting_code)
+
+    # Prefer the write-ahead log: it's the superset. The in-memory copy is
+    # empty whenever this process restarted mid-call, which used to mean the
+    # whole call was silently dropped.
+    lines = _read_pending(pending_path) or _sessions.pop(key, [])
+    _sessions.pop(key, None)
     if not lines:
         return
 
@@ -188,6 +232,30 @@ async def finalize_session(patient_id: str, other_id: str, other_name: str, meet
     path = _dyad_file_path(patient_id, other_id, other_name)
     with open(path, "a", encoding="utf-8") as f:
         f.write(block)
+
+    pending_path.unlink(missing_ok=True)
+
+
+async def sweep_abandoned(patient_id: str, other_id: str, other_name: str) -> None:
+    """Finalize calls for this dyad that stopped sending chunks but never
+    finalized — the tab was closed, the browser crashed, or the other person
+    hung up first (which makes the client's finalize() a silent no-op). Without
+    this, those calls would sit as .pending files forever and never show up in
+    the patient's history."""
+    dyad = _dyad_file_path(patient_id, other_id, other_name)
+    now = datetime.now().timestamp()
+
+    for pending in dyad.parent.glob(f"{dyad.stem}.*.pending"):
+        try:
+            if now - pending.stat().st_mtime < _ABANDONED_AFTER_SECONDS:
+                continue  # a call is still live and writing to this one
+            meeting_code = pending.suffixes[-2].lstrip(".")
+        except Exception:
+            logger.exception("could not inspect pending file %s", pending)
+            continue
+
+        logger.info("finalizing abandoned call %s", pending.name)
+        await finalize_session(patient_id, other_id, other_name, meeting_code)
 
 
 def read_history(patient_id: str, other_id: str, other_name: str) -> list[dict]:
