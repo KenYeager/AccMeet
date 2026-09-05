@@ -33,6 +33,10 @@ services:
       # rag/backend runs as a bare process on the host (not in this compose
       # file) — host.docker.internal reaches it from inside the container.
       RAG_SERVICE_URL: http://host.docker.internal:8001
+      # macOS Docker Desktop bind mounts don't reliably propagate host
+      # filesystem change events into the container — without forced
+      # polling, uvicorn's --reload can silently miss host-side edits.
+      WATCHFILES_FORCE_POLLING: "true"
     extra_hosts:
       # host.docker.internal is automatic on Docker Desktop (Mac/Windows);
       # this makes it resolve on plain Linux Docker Engine too.
@@ -58,6 +62,11 @@ services:
       # Used server-side by the Next.js rewrite proxy, which runs inside this
       # container — must use the Docker Compose service name, not localhost
       INTERNAL_API_URL: http://backend:8000
+      # Same macOS Docker Desktop bind-mount caveat as the backend above —
+      # without polling, Next's dev server can serve a stale bundle after
+      # host-side edits (see this session's deaf/frontend debugging).
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
     restart: unless-stopped
 
 volumes:

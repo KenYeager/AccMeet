@@ -10,6 +10,7 @@ from langchain_core.documents import Document
 from rag_engine import vector_store
 from graph import agent_app
 from scheduling_graph import check_and_schedule
+from conversation_memory import summarize_chunk, get_session_summary, finalize_session, read_history
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -33,6 +34,19 @@ class IngestBatchRequest(BaseModel):
 
 class TranscriptInput(BaseModel):
     chunk: str
+
+class ConversationChunkRequest(BaseModel):
+    patient_id: str
+    other_id: str
+    other_name: str
+    meeting_code: str
+    text: str
+
+class ConversationFinalizeRequest(BaseModel):
+    patient_id: str
+    other_id: str
+    other_name: str
+    meeting_code: str
 
 def _extract_text(content) -> str:
     """Gemini can return message.content as a string or a list of content blocks."""
@@ -106,6 +120,37 @@ async def process_transcript_chunk(payload: TranscriptInput):
             "hud_card_data": tool_output,
             "assistant_response": final_content,
         }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/conversation/chunk")
+async def conversation_chunk(payload: ConversationChunkRequest):
+    try:
+        result = await summarize_chunk(
+            payload.patient_id, payload.other_id, payload.other_name,
+            payload.meeting_code, payload.text,
+        )
+        return {
+            "current_context": result.current_context,
+            "summary_line": result.summary_line,
+            "session_summary": get_session_summary(payload.patient_id, payload.other_id, payload.meeting_code),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/conversation/finalize")
+async def conversation_finalize(payload: ConversationFinalizeRequest, background_tasks: BackgroundTasks):
+    # Fire-and-forget: the client calls this right before navigating away on
+    # leave, so it shouldn't block on one more Gemini round trip.
+    background_tasks.add_task(
+        finalize_session, payload.patient_id, payload.other_id, payload.other_name, payload.meeting_code,
+    )
+    return {"status": "scheduled"}
+
+@app.get("/api/conversation/history")
+async def conversation_history(patient_id: str, other_id: str, other_name: str):
+    try:
+        return {"entries": read_history(patient_id, other_id, other_name)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
