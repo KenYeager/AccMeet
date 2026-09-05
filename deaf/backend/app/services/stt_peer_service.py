@@ -18,6 +18,7 @@ from typing import Optional
 import av
 from aiortc import RTCPeerConnection, RTCSessionDescription
 
+from .asl_service import caption_to_asl
 from .signaling_service import room_manager
 from .stt_service import transcribe_wav_bytes
 
@@ -97,6 +98,9 @@ class SttPeerConnection:
         # reception for every other participant in the room.
         text = await loop.run_in_executor(None, transcribe_wav_bytes, wav_bytes, self.user_name)
         if text:
+            # spaCy's parse is also blocking CPU work — off the event loop,
+            # same reason as transcribe_wav_bytes above.
+            asl = await loop.run_in_executor(None, caption_to_asl, text)
             # NOTE: no exclude_user_id — the server is now the sole source of
             # every caption, including the speaker's own. This differs from
             # the WS router's peer-to-peer caption relay (which excludes the
@@ -106,7 +110,12 @@ class SttPeerConnection:
                 "type": "caption",
                 "from_user_id": self.user_id,
                 "from_user_name": self.user_name,
-                "payload": {"text": text, "is_final": True},
+                "payload": {
+                    "text": text,
+                    "is_final": True,
+                    "asl_tokens": asl["tokens"],
+                    "asl_gifs": asl["gifs"],
+                },
             })
 
     async def close(self) -> None:

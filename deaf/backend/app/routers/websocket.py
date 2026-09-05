@@ -1,9 +1,11 @@
+import asyncio
 import json
 
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from ..database import get_db
+from ..services.asl_service import caption_to_asl
 from ..services.signaling_service import room_manager
 from ..services.meeting_service import get_meeting_by_code
 from ..services import stt_peer_service
@@ -13,9 +15,9 @@ router = APIRouter()
 # Message types that get relayed to a specific target peer
 RELAY_TYPES = {"offer", "answer", "ice_candidate"}
 
-# Message types that get broadcast to all peers in the room
-# caption is critical for deaf users — always broadcast
-BROADCAST_TYPES = {"mute_status", "video_status", "caption"}
+# Message types that get broadcast to all peers in the room.
+# "caption" is handled in its own branch below (needs ASL gloss enrichment).
+BROADCAST_TYPES = {"mute_status", "video_status"}
 
 # Client<->server SDP exchange for the dedicated browser-to-backend audio
 # connection used for server-side transcription — not relayed to other
@@ -104,6 +106,27 @@ async def websocket_endpoint(
                         "from_user_name": user_name,
                         "payload": payload,
                     })
+
+            elif msg_type == "caption":
+                # Manual (typed) captions also get ASL gloss + GIF matching,
+                # same as server-STT captions in stt_peer_service.py — spaCy's
+                # parse is blocking CPU work, so it's offloaded here too
+                # rather than stalling every other connection's event loop.
+                #
+                # NOTE: no exclude_user_id, unlike mute_status/video_status
+                # below — the typist needs the asl_tokens/asl_gifs fields on
+                # their own message too (computed here, not client-side), so
+                # the frontend's single "caption" handler treats sender and
+                # peers identically instead of the sender's copy going out
+                # with no ASL data. See useWebRTC.ts's sendManualCaption.
+                loop = asyncio.get_running_loop()
+                asl = await loop.run_in_executor(None, caption_to_asl, payload.get("text", ""))
+                await room_manager.broadcast(meeting_code, {
+                    "type": msg_type,
+                    "from_user_id": user_id,
+                    "from_user_name": user_name,
+                    "payload": {**payload, "asl_tokens": asl["tokens"], "asl_gifs": asl["gifs"]},
+                })
 
             elif msg_type in BROADCAST_TYPES:
                 await room_manager.broadcast(meeting_code, {

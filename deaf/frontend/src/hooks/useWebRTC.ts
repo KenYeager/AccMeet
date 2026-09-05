@@ -8,6 +8,7 @@ import { PeerConnectionManager, getLocalMediaStream } from "@/lib/webrtc";
 import { SttStream } from "@/lib/sttStream";
 import { meetings } from "@/lib/api";
 import type {
+  AslGif,
   CaptionEntry,
   ConnectionStatus,
   ParticipantJoinedPayload,
@@ -31,6 +32,13 @@ export interface LocalCaptionEntry {
   text: string;
   isFinal: boolean;
   timestamp: number;
+  aslGifs?: AslGif[];
+}
+
+// Who a currently-playing sign sequence belongs to, so the UI can label it.
+export interface SignPlayback {
+  speakerName: string;
+  gifs: AslGif[];
 }
 
 export function useWebRTC(
@@ -55,6 +63,9 @@ export function useWebRTC(
   // Caption state — always on for deaf users
   const [localCaption, setLocalCaption] = useState("");
   const [localCaptionHistory, setLocalCaptionHistory] = useState<LocalCaptionEntry[]>([]);
+  // Most recent final caption's ASL gif sequence, from any speaker — the
+  // sign-playback strip renders whatever's here and clears when it finishes.
+  const [signPlayback, setSignPlayback] = useState<SignPlayback | null>(null);
 
   const sttStreamRef = useRef<SttStream | null>(null);
   const localCaptionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -108,10 +119,10 @@ export function useWebRTC(
     localCaptionTimerRef.current = setTimeout(() => setLocalCaption(""), CAPTION_CLEAR_MS);
   }, []);
 
-  const appendLocalCaptionHistory = useCallback((text: string, isFinal: boolean) => {
+  const appendLocalCaptionHistory = useCallback((text: string, isFinal: boolean, aslGifs?: AslGif[]) => {
     setLocalCaptionHistory(prev => {
       const last = prev[prev.length - 1];
-      const entry: LocalCaptionEntry = { id: `self-${Date.now()}`, text, isFinal, timestamp: Date.now() };
+      const entry: LocalCaptionEntry = { id: `self-${Date.now()}`, text, isFinal, timestamp: Date.now(), aslGifs };
       let next: LocalCaptionEntry[];
       if (last && !last.isFinal) {
         // Replace rolling interim with latest
@@ -256,11 +267,20 @@ export function useWebRTC(
           if (destroyed) return;
           const payload = msg.payload as CaptionPayload;
           const fromUserId = msg.from_user_id!;
+          const fromUserName = msg.from_user_name || "Speaker";
+          // TEMP DEBUG — visible on-screen instead of console, remove once confirmed.
+          toast(`RX from ${fromUserName}: "${payload.text}" gifs=${payload.asl_gifs?.length ?? 0}`);
+
+          // A finished sentence with matched signs takes over the shared
+          // sign-playback strip, regardless of who spoke it.
+          if (payload.is_final && payload.asl_gifs && payload.asl_gifs.length > 0) {
+            setSignPlayback({ speakerName: fromUserId === currentUserId ? "You" : fromUserName, gifs: payload.asl_gifs });
+          }
 
           if (fromUserId === currentUserId) {
             setLocalCaption(payload.text);
             scheduleLocalCaptionClear();
-            appendLocalCaptionHistory(payload.text, payload.is_final);
+            appendLocalCaptionHistory(payload.text, payload.is_final, payload.asl_gifs);
             return;
           }
 
@@ -270,6 +290,7 @@ export function useWebRTC(
             text: payload.text,
             isFinal: payload.is_final,
             timestamp: Date.now(),
+            aslGifs: payload.asl_gifs,
           });
           scheduleCaptionClear(fromUserId);
         });
@@ -394,23 +415,20 @@ export function useWebRTC(
     }
   }, []);
 
+  const clearSignPlayback = useCallback(() => setSignPlayback(null), []);
+
   const sendManualCaption = useCallback((text: string) => {
     if (!text.trim()) return;
-    const entry: LocalCaptionEntry = {
-      id: `self-${Date.now()}`,
-      text: text.trim(),
-      isFinal: true,
-      timestamp: Date.now(),
-    };
-    setLocalCaption(text.trim());
-    scheduleLocalCaptionClear();
-    setLocalCaptionHistory(prev => {
-      const next = [...prev, entry];
-      if (next.length > MAX_HISTORY) return next.slice(next.length - MAX_HISTORY);
-      return next;
-    });
+    // TEMP DEBUG — visible on-screen instead of console, remove once confirmed.
+    toast(`Sending: "${text.trim()}" (WS ${signalingRef.current?.isConnected ? "open" : "CLOSED"})`);
+    // No optimistic local update here — the backend now always broadcasts
+    // "caption" back to the sender too (needed so it can attach asl_tokens/
+    // asl_gifs, computed server-side via spaCy). The existing signaling.on
+    // ("caption", ...) handler's self-vs-peer branch above picks this up
+    // and populates localCaption/localCaptionHistory/signPlayback from the
+    // round trip, exactly like server-STT captions already do.
     signalingRef.current?.send("caption", { text: text.trim(), is_final: true });
-  }, [scheduleLocalCaptionClear]);
+  }, []);
 
   return {
     localStream,
@@ -422,6 +440,8 @@ export function useWebRTC(
     micError,
     localCaption,
     localCaptionHistory,
+    signPlayback,
+    clearSignPlayback,
     toggleMute,
     toggleCamera,
     leaveRoom,

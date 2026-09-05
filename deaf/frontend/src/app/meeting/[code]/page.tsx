@@ -26,7 +26,7 @@ import toast from "react-hot-toast";
 import { useIdentity } from "@/hooks/useIdentity";
 import { useWebRTC } from "@/hooks/useWebRTC";
 import { useSpeakingDetection } from "@/hooks/useSpeakingDetection";
-import { meetings, ApiError } from "@/lib/api";
+import { meetings, ApiError, API_BASE } from "@/lib/api";
 import type { ConnectionStatus, RemoteParticipant, CaptionEntry } from "@/types";
 import type { LocalCaptionEntry } from "@/hooks/useWebRTC";
 
@@ -192,12 +192,80 @@ function ParticipantTile({
   );
 }
 
+// ---------- ASL sign playback ----------
+// Cycles through the GIFs matched to the most recent final caption, one at a
+// time, then calls onDone so the caller can clear the queue. Backed by
+// deaf/backend's asl_service.py (spaCy gloss ordering + GIF filename match).
+const SIGN_DISPLAY_MS = 1100;
+
+function SignPlayer({
+  playback,
+  onDone,
+}: {
+  playback: { speakerName: string; gifs: { word: string; gif: string }[] } | null;
+  onDone: () => void;
+}) {
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    setIndex(0);
+  }, [playback]);
+
+  useEffect(() => {
+    if (!playback) return;
+    const isLast = index >= playback.gifs.length - 1;
+    const timer = setTimeout(() => {
+      if (isLast) onDone();
+      else setIndex(i => i + 1);
+    }, SIGN_DISPLAY_MS);
+    return () => clearTimeout(timer);
+  }, [playback, index, onDone]);
+
+  if (!playback || playback.gifs.length === 0) return null;
+  const current = playback.gifs[Math.min(index, playback.gifs.length - 1)];
+
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: "0.875rem",
+      padding: "0.625rem 1.25rem",
+      borderBottom: "1px solid rgba(255, 224, 51, 0.12)",
+      background: "rgba(10, 16, 32, 0.8)",
+      flexShrink: 0,
+    }}>
+      <img
+        key={current.gif}
+        src={`${API_BASE}/gif/${current.gif}`}
+        alt={current.word}
+        style={{ height: "4.5rem", width: "4.5rem", objectFit: "contain", borderRadius: "0.5rem", background: "rgba(255,255,255,0.04)" }}
+      />
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem", minWidth: 0 }}>
+        <span style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+          {playback.speakerName} · ASL sign
+        </span>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.375rem" }}>
+          {playback.gifs.map((g, i) => (
+            <span key={i} style={{
+              fontSize: "0.8125rem", fontWeight: 700,
+              color: i === index ? "var(--color-caption)" : "var(--color-text-muted)",
+              opacity: i === index ? 1 : 0.5,
+            }}>
+              {g.word}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---------- Caption history panel ----------
 function CaptionPanel({
   participants,
   localUserName,
   localCaption,
   localHistory,
+  signPlayback,
+  onSignPlaybackDone,
   onRestartCaptions,
   onSendManualCaption,
 }: {
@@ -205,6 +273,8 @@ function CaptionPanel({
   localUserName: string;
   localCaption: string;
   localHistory: LocalCaptionEntry[];
+  signPlayback: { speakerName: string; gifs: { word: string; gif: string }[] } | null;
+  onSignPlaybackDone: () => void;
   onRestartCaptions: () => void;
   onSendManualCaption: (text: string) => void;
 }) {
@@ -274,6 +344,8 @@ function CaptionPanel({
           <RefreshCw size={13} /> Restart Mic Captions
         </button>
       </div>
+
+      <SignPlayer playback={signPlayback} onDone={onSignPlaybackDone} />
 
       {/* History scroll area */}
       <div
@@ -440,6 +512,8 @@ export default function MeetingRoomPage() {
     micError,
     localCaption,
     localCaptionHistory,
+    signPlayback,
+    clearSignPlayback,
     toggleMute,
     toggleCamera,
     leaveRoom,
@@ -652,6 +726,8 @@ export default function MeetingRoomPage() {
             localUserName={userName}
             localCaption={localCaption}
             localHistory={localCaptionHistory}
+            signPlayback={signPlayback}
+            onSignPlaybackDone={clearSignPlayback}
             onRestartCaptions={restartCaptions}
             onSendManualCaption={sendManualCaption}
           />

@@ -53,9 +53,16 @@ export interface VideoStatusPayload {
   is_camera_off: boolean;
 }
 
+export interface AslGif {
+  word: string;
+  gif: string;
+}
+
 export interface CaptionPayload {
   text: string;
   is_final: boolean;
+  asl_tokens?: string[];
+  asl_gifs?: AslGif[];
 }
 
 export interface WebRTCPayload {
@@ -117,6 +124,7 @@ export interface CaptionEntry {
   text: string;
   isFinal: boolean;
   timestamp: number;
+  aslGifs?: AslGif[];
 }
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected" | "error";

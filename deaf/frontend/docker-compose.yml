@@ -16,6 +16,13 @@ services:
       # Browser-facing — the browser runs on the host, so localhost is correct.
       NEXT_PUBLIC_API_URL: http://localhost:8003
       NEXT_PUBLIC_WS_URL: ws://localhost:8003
+      # macOS Docker Desktop bind mounts don't propagate host filesystem
+      # change events into the container's inotify — without polling, Next's
+      # dev server file watcher silently misses host-side edits and keeps
+      # serving a stale compiled bundle (root cause of a long confusing
+      # debugging session where source changes never reached the browser).
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
