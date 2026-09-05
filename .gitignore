@@ -103,3 +103,10 @@ faiss_index/
 dump/
 *.sqlite3
 *.db
+
+# ==========================================
+# Standalone prototypes / planning docs (not part of any module)
+# ==========================================
+/app.py
+/MeetingPlatform/architecture-v1.png
+/MeetingPlatform/Plans/planv1.md
