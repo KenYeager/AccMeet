@@ -51,14 +51,16 @@ except OSError:
 
 
 def _extract_gloss_tokens(doc) -> list[str]:
-    """Reorder a parsed sentence into ASL gloss order: TIME -> SUBJECT -> VERB -> OBJECT -> OTHER."""
+    """Reorder a parsed sentence into ASL gloss order, keeping all spoken words."""
     time_words, subject, verb, obj, other = [], [], [], [], []
+    all_words = []
 
     for token in doc:
         if token.is_punct or token.is_space:
             continue
 
         word = token.text.lower()
+        all_words.append(word)
 
         if word in TIME_WORDS or token.ent_type_ in ("DATE", "TIME"):
             time_words.append(word)
@@ -70,10 +72,13 @@ def _extract_gloss_tokens(doc) -> list[str]:
             obj.append(word)
         elif token.dep_ == "neg" or word in ("not", "never", "no"):
             verb.insert(0, word)
-        elif token.pos_ in ("NOUN", "PROPN", "ADJ") and not token.is_stop:
+        else:
             other.append(word)
 
     ordered = time_words + subject + verb + obj + other
+    for w in all_words:
+        if w not in ordered:
+            ordered.append(w)
 
     seen: set[str] = set()
     unique: list[str] = []
@@ -85,27 +90,31 @@ def _extract_gloss_tokens(doc) -> list[str]:
 
 
 def gloss_to_gifs(tokens: list[str]) -> list[dict]:
-    """Map ASL gloss tokens to available GIFs, in order. Words with no GIF are dropped."""
+    """Map ASL gloss tokens to available GIFs. Words without a GIF receive gif=None for word display fallback."""
     result = []
     for word in tokens:
         gif_name = GIF_INDEX.get(word)
-        if gif_name:
-            result.append({"word": word.upper(), "gif": gif_name})
+        result.append({"word": word.upper(), "gif": gif_name if gif_name else None})
     return result
 
 
 def caption_to_asl(text: str) -> dict:
     """
-    Convert a caption sentence into ASL gloss tokens + matched sign GIFs.
-    Returns {"tokens": [...], "gifs": [{"word", "gif"}, ...]} — both empty if
-    the text is blank or spaCy failed to load (feature degrades silently,
-    plain-text captions still work either way).
+    Convert a caption sentence into ASL gloss tokens + matched sign GIFs/fallback words.
+    Returns {"tokens": [...], "gifs": [{"word", "gif"}, ...]}
     """
     text = (text or "").strip()
-    if not text or _nlp is None:
+    if not text:
         return {"tokens": [], "gifs": []}
 
-    doc = _nlp(text)
-    tokens = _extract_gloss_tokens(doc)
+    if _nlp is not None:
+        doc = _nlp(text)
+        tokens = _extract_gloss_tokens(doc)
+    else:
+        import re
+        tokens = [w.lower() for w in re.findall(r"\b\w+\b", text)]
+
     gifs = gloss_to_gifs(tokens)
     return {"tokens": [t.upper() for t in tokens], "gifs": gifs}
+
+

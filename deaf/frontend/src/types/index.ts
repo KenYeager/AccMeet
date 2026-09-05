@@ -55,7 +55,7 @@ export interface VideoStatusPayload {
 
 export interface AslGif {
   word: string;
-  gif: string;
+  gif?: string | null;
 }
 
 export interface CaptionPayload {

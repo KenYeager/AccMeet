@@ -49,3 +49,10 @@ if _gif_dir.exists():
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "service": "deafmeet-backend"}
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8003, reload=True)
+

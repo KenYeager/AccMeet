@@ -169,40 +169,18 @@ function ParticipantTile({
           </span>
         </div>
       )}
-
-      {/* Floating live caption overlay directly on tile */}
-      {currentCaption && (
-        <div style={{
-          position: "absolute", bottom: showVideo ? "2.5rem" : "0.75rem", left: "0.5rem", right: "0.5rem",
-          background: "rgba(0, 0, 0, 0.85)",
-          backdropFilter: "blur(8px)",
-          borderLeft: "3px solid var(--color-caption)",
-          borderRadius: "0.5rem",
-          padding: "0.4rem 0.625rem",
-          fontSize: "0.875rem",
-          color: "var(--color-caption)",
-          fontWeight: 700,
-          lineHeight: 1.35,
-          zIndex: 5,
-        }}>
-          💬 {currentCaption}
-        </div>
-      )}
     </div>
   );
 }
 
 // ---------- ASL sign playback ----------
-// Cycles through the GIFs matched to the most recent final caption, one at a
-// time, then calls onDone so the caller can clear the queue. Backed by
-// deaf/backend's asl_service.py (spaCy gloss ordering + GIF filename match).
 const SIGN_DISPLAY_MS = 1100;
 
 function SignPlayer({
   playback,
   onDone,
 }: {
-  playback: { speakerName: string; gifs: { word: string; gif: string }[] } | null;
+  playback: { speakerName: string; gifs: { word: string; gif?: string | null }[] } | null;
   onDone: () => void;
 }) {
   const [index, setIndex] = useState(0);
@@ -212,7 +190,7 @@ function SignPlayer({
   }, [playback]);
 
   useEffect(() => {
-    if (!playback) return;
+    if (!playback || playback.gifs.length === 0) return;
     const isLast = index >= playback.gifs.length - 1;
     const timer = setTimeout(() => {
       if (isLast) onDone();
@@ -226,44 +204,73 @@ function SignPlayer({
 
   return (
     <div style={{
-      display: "flex", alignItems: "center", gap: "0.875rem",
-      padding: "0.625rem 1.25rem",
-      borderBottom: "1px solid rgba(255, 224, 51, 0.12)",
-      background: "rgba(10, 16, 32, 0.8)",
-      flexShrink: 0,
+      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+      padding: "1rem",
+      flex: 1,
+      width: "100%",
+      height: "100%",
     }}>
-      <img
-        key={current.gif}
-        src={`${API_BASE}/gif/${current.gif}`}
-        alt={current.word}
-        style={{ height: "4.5rem", width: "4.5rem", objectFit: "contain", borderRadius: "0.5rem", background: "rgba(255,255,255,0.04)" }}
-      />
-      <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem", minWidth: 0 }}>
-        <span style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-          {playback.speakerName} · ASL sign
-        </span>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.375rem" }}>
-          {playback.gifs.map((g, i) => (
-            <span key={i} style={{
-              fontSize: "0.8125rem", fontWeight: 700,
-              color: i === index ? "var(--color-caption)" : "var(--color-text-muted)",
-              opacity: i === index ? 1 : 0.5,
-            }}>
-              {g.word}
+      {/* Large Active GIF / Word Box */}
+      <div style={{
+        height: "380px",
+        width: "100%",
+        maxWidth: "460px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "rgba(6, 11, 24, 0.95)",
+        border: "3px solid rgba(255, 224, 51, 0.7)",
+        borderRadius: "1.25rem",
+        boxShadow: "0 0 40px rgba(255, 224, 51, 0.3)",
+        overflow: "hidden",
+        padding: "0.75rem",
+      }}>
+        {current.gif ? (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.75rem", width: "100%", height: "100%", justifyContent: "center" }}>
+            <img
+              key={`${current.word}-${current.gif}`}
+              src={`${API_BASE}/gif/${current.gif}`}
+              alt={current.word}
+              style={{
+                height: "300px",
+                width: "300px",
+                maxWidth: "100%",
+                maxHeight: "300px",
+                objectFit: "contain",
+                borderRadius: "0.75rem",
+              }}
+            />
+            <span style={{ fontSize: "1.25rem", fontWeight: 900, color: "var(--color-caption)", textTransform: "uppercase", letterSpacing: "0.1em" }}>
+              {current.word}
             </span>
-          ))}
-        </div>
+          </div>
+        ) : (
+          <div
+            key={`${current.word}-text`}
+            style={{
+              height: "100%",
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "rgba(255, 224, 51, 0.12)",
+              borderRadius: "0.75rem",
+              color: "var(--color-caption)", fontWeight: 900, fontSize: "3rem",
+              letterSpacing: "0.08em",
+              textAlign: "center",
+              padding: "1.5rem",
+            }}
+          >
+            {current.word}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-// ---------- Caption history panel ----------
+// ---------- ASL Sign Language Panel ----------
 function CaptionPanel({
-  participants,
-  localUserName,
-  localCaption,
-  localHistory,
   signPlayback,
   onSignPlaybackDone,
   onRestartCaptions,
@@ -273,32 +280,12 @@ function CaptionPanel({
   localUserName: string;
   localCaption: string;
   localHistory: LocalCaptionEntry[];
-  signPlayback: { speakerName: string; gifs: { word: string; gif: string }[] } | null;
+  signPlayback: { speakerName: string; gifs: { word: string; gif?: string | null }[] } | null;
   onSignPlaybackDone: () => void;
   onRestartCaptions: () => void;
   onSendManualCaption: (text: string) => void;
 }) {
-  const scrollRef = useRef<HTMLDivElement | null>(null);
   const [manualText, setManualText] = useState("");
-
-  // Merge all history entries and sort by timestamp
-  const allEntries: Array<{ name: string; entry: CaptionEntry | LocalCaptionEntry; isSelf: boolean }> = [];
-
-  // Local history
-  localHistory.forEach(e => allEntries.push({ name: localUserName, entry: e, isSelf: true }));
-
-  // Remote history
-  participants.forEach(p => {
-    (p.captionHistory || []).forEach(e => allEntries.push({ name: p.user_name, entry: e, isSelf: false }));
-  });
-
-  allEntries.sort((a, b) => a.entry.timestamp - b.entry.timestamp);
-
-  // Auto-scroll to bottom on new entries
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [allEntries.length, localCaption]);
 
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -307,115 +294,77 @@ function CaptionPanel({
     setManualText("");
   };
 
-  const hasAnyCaption = allEntries.length > 0 || localCaption || participants.some(p => p.caption);
-
   return (
     <div className="caption-panel" style={{
       height: "100%", display: "flex", flexDirection: "column",
       background: "var(--color-caption-bg)",
-      borderTop: "2px solid rgba(255, 224, 51, 0.3)",
       backdropFilter: "blur(20px)",
       boxShadow: "var(--shadow-caption)",
     }}>
-      {/* Panel header */}
+      {/* Sidebar Header */}
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "0.5rem 1.25rem",
+        padding: "0.75rem 1rem",
         borderBottom: "1px solid rgba(255, 224, 51, 0.12)",
-        background: "rgba(10, 16, 32, 0.8)",
+        background: "rgba(10, 16, 32, 0.85)",
         flexShrink: 0,
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
-          <div style={{
-            display: "flex", alignItems: "center", gap: "0.375rem",
-            color: "var(--color-caption)", fontWeight: 800, fontSize: "0.875rem",
-            textTransform: "uppercase", letterSpacing: "0.06em",
-          }}>
-            <Sparkles size={15} /> Live Transcripts & Captions
-          </div>
+        <div style={{
+          display: "flex", alignItems: "center", gap: "0.375rem",
+          color: "var(--color-caption)", fontWeight: 800, fontSize: "0.875rem",
+          textTransform: "uppercase", letterSpacing: "0.06em",
+        }}>
+          <Sparkles size={15} /> ASL Sign Stream
         </div>
 
         <button
           onClick={onRestartCaptions}
           className="btn btn-ghost"
-          style={{ padding: "0.25rem 0.625rem", fontSize: "0.75rem", gap: "0.375rem" }}
+          style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem", gap: "0.25rem" }}
           title="Restart speech recognition"
         >
-          <RefreshCw size={13} /> Restart Mic Captions
+          <RefreshCw size={12} /> Restart Mic
         </button>
       </div>
 
-      <SignPlayer playback={signPlayback} onDone={onSignPlaybackDone} />
-
-      {/* History scroll area */}
-      <div
-        className="caption-history"
-        ref={scrollRef}
-        style={{ flex: 1, overflowY: "auto", padding: "0.5rem 1.25rem", minHeight: 0 }}
-      >
-        {!hasAnyCaption && (
+      {/* Main active area: Sole Large GIF/Word box */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", minHeight: 0, padding: "1rem" }}>
+        {signPlayback && signPlayback.gifs.length > 0 ? (
+          <SignPlayer playback={signPlayback} onDone={onSignPlaybackDone} />
+        ) : (
           <div style={{
-            textAlign: "center", color: "var(--color-text-muted)",
-            fontSize: "0.875rem", padding: "1rem",
-            display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5rem",
+            display: "flex", flexDirection: "column",
+            alignItems: "center", justifyContent: "center",
+            padding: "2rem 1.5rem", textAlign: "center", gap: "1rem",
           }}>
-            <Captions size={24} color="var(--color-caption)" style={{ opacity: 0.7 }} />
-            <p style={{ color: "var(--color-caption)", fontWeight: 600 }}>Captions appear automatically as speech is recognized</p>
-            <p style={{ fontSize: "0.8125rem", color: "var(--color-text-secondary)" }}>
-              Speak into your microphone or type a text caption below to broadcast to everyone.
-            </p>
-          </div>
-        )}
-
-        {allEntries.map((item, idx) => (
-          <div key={`${item.entry.id}-${idx}`} className="caption-entry-row" style={{ padding: "0.4rem 0" }}>
-            <span className="caption-speaker" style={{
-              color: item.isSelf ? "var(--color-blue-400)" : "var(--color-caption)",
+            <div style={{
+              width: "300px", height: "300px", borderRadius: "1.25rem",
+              border: "2px dashed rgba(255, 224, 51, 0.3)",
+              background: "rgba(6, 11, 24, 0.6)",
+              display: "flex", flexDirection: "column",
+              alignItems: "center", justifyContent: "center", gap: "1rem",
+              boxShadow: "inset 0 0 20px rgba(0,0,0,0.5)",
             }}>
-              {item.name}{item.isSelf ? " (you)" : ""}
-              <span style={{
-                fontWeight: 400, color: "var(--color-text-muted)",
-                marginLeft: "0.5rem", textTransform: "none", letterSpacing: 0, fontSize: "0.75rem",
-              }}>
-                {formatTime(item.entry.timestamp)}
+              <Sparkles size={48} color="var(--color-caption)" style={{ opacity: 0.7 }} />
+              <span style={{ fontSize: "1.125rem", color: "var(--color-caption)", fontWeight: 800, letterSpacing: "0.08em" }}>
+                ASL SIGN BOX
               </span>
-            </span>
-            <p className={`caption-text-live ${item.entry.isFinal ? "caption-text-final" : "caption-text-interim"}`}
-              style={{ fontSize: "1.1rem", marginTop: "0.1rem", color: item.entry.isFinal ? "var(--color-caption)" : "rgba(255, 224, 51, 0.7)" }}>
-              {item.entry.text}
+            </div>
+            <p style={{ color: "var(--color-caption)", fontWeight: 800, fontSize: "1.125rem", marginTop: "0.25rem" }}>
+              Ready for ASL Signs
             </p>
-          </div>
-        ))}
-
-        {/* Current live lines at bottom */}
-        {localCaption && (
-          <div className="caption-entry-row caption-live-bar" style={{ margin: "0.375rem 0", padding: "0.4rem 0.625rem" }}>
-            <span className="caption-speaker" style={{ color: "var(--color-blue-400)" }}>
-              {localUserName} (you) · speaking live
-            </span>
-            <p className="caption-text-live" style={{ color: "var(--color-caption)", fontSize: "1.15rem", fontWeight: 700 }}>
-              {localCaption}
+            <p style={{ fontSize: "0.875rem", color: "var(--color-text-secondary)", maxWidth: "280px" }}>
+              Speak into mic or type below to display ASL sign GIFs.
             </p>
           </div>
         )}
-
-        {participants.filter(p => p.caption).map(p => (
-          <div key={`live-${p.user_id}`} className="caption-entry-row caption-live-bar" style={{ margin: "0.375rem 0", padding: "0.4rem 0.625rem" }}>
-            <span className="caption-speaker" style={{ color: "var(--color-caption)" }}>
-              {p.user_name} · speaking live
-            </span>
-            <p className="caption-text-live" style={{ color: "var(--color-caption)", fontSize: "1.15rem", fontWeight: 700 }}>
-              {p.caption}
-            </p>
-          </div>
-        ))}
       </div>
 
-      {/* Manual text caption input bar for non-verbal users or testing */}
+      {/* Input bar */}
       <form onSubmit={handleManualSubmit} style={{
-        padding: "0.5rem 1rem",
+        padding: "0.625rem 0.875rem",
         borderTop: "1px solid rgba(255, 224, 51, 0.12)",
-        background: "rgba(6, 11, 24, 0.9)",
+        background: "rgba(6, 11, 24, 0.95)",
         display: "flex",
         gap: "0.5rem",
         alignItems: "center",
@@ -424,7 +373,7 @@ function CaptionPanel({
         <input
           type="text"
           className="input"
-          placeholder="Type live text caption..."
+          placeholder="Type message for ASL signs..."
           value={manualText}
           onChange={e => setManualText(e.target.value)}
           style={{
@@ -441,7 +390,7 @@ function CaptionPanel({
           type="submit"
           className="btn btn-primary"
           style={{
-            padding: "0.4rem 0.875rem",
+            padding: "0.4rem 0.75rem",
             height: "2.25rem",
             fontSize: "0.8125rem",
             background: "linear-gradient(135deg, #ffd000, #f59e0b)",
@@ -449,7 +398,7 @@ function CaptionPanel({
             fontWeight: 700,
           }}
         >
-          <Send size={13} /> Caption
+          <Send size={13} /> Send
         </button>
       </form>
     </div>
@@ -461,7 +410,7 @@ export default function MeetingRoomPage() {
   const params = useParams<{ code: string }>();
   const meetingCode = (params.code || "").toUpperCase();
   const router = useRouter();
-  const { userId, userName, setUserName, isReady } = useIdentity();
+  const { userId, userName, setUserName, isDeaf, setIsDeaf, isReady } = useIdentity();
 
   const [joinState, setJoinState] = useState<JoinState>({ phase: "checking" });
   const [elapsed, setElapsed] = useState(0);
@@ -563,6 +512,34 @@ export default function MeetingRoomPage() {
           <form onSubmit={handleSubmitName} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
             <input autoFocus type="text" className="input" placeholder="e.g. Alex Johnson"
               value={nameInput} onChange={e => setNameInput(e.target.value)} maxLength={50} />
+
+            <label style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.75rem",
+              padding: "0.75rem 1rem",
+              borderRadius: "0.625rem",
+              background: "rgba(15, 23, 42, 0.6)",
+              border: "1px solid rgba(255, 224, 51, 0.2)",
+              cursor: "pointer",
+              userSelect: "none"
+            }}>
+              <input
+                type="checkbox"
+                checked={isDeaf}
+                onChange={e => setIsDeaf(e.target.checked)}
+                style={{ width: "1.25rem", height: "1.25rem", accentColor: "#ffd000", cursor: "pointer" }}
+              />
+              <div>
+                <div style={{ fontWeight: 700, fontSize: "0.9375rem", color: "var(--color-caption)" }}>
+                  I am Deaf / Hard of Hearing
+                </div>
+                <div style={{ fontSize: "0.8125rem", color: "var(--color-text-secondary)" }}>
+                  {isDeaf ? "Show ASL Sign Language conversion" : "Normal user (Hide Sign Language)"}
+                </div>
+              </div>
+            </label>
+
             <button type="submit" className="btn btn-primary" style={{ padding: "0.75rem" }}>Continue</button>
           </form>
         </div>
@@ -670,6 +647,31 @@ export default function MeetingRoomPage() {
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: "1.25rem", color: "var(--color-text-secondary)", fontSize: "0.875rem" }}>
+          {/* Deaf vs Normal user selection checkbox */}
+          <label style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.5rem",
+            padding: "0.35rem 0.75rem",
+            borderRadius: "0.5rem",
+            background: isDeaf ? "rgba(255, 224, 51, 0.15)" : "rgba(255, 255, 255, 0.05)",
+            border: isDeaf ? "1px solid rgba(255, 224, 51, 0.3)" : "1px solid var(--color-border)",
+            cursor: "pointer",
+            userSelect: "none",
+            fontSize: "0.8125rem",
+            fontWeight: 700,
+            color: isDeaf ? "var(--color-caption)" : "var(--color-text-secondary)",
+            transition: "all 0.2s ease"
+          }}>
+            <input
+              type="checkbox"
+              checked={isDeaf}
+              onChange={e => setIsDeaf(e.target.checked)}
+              style={{ width: "1rem", height: "1rem", accentColor: "#ffd000", cursor: "pointer" }}
+            />
+            <span>{isDeaf ? "Deaf User (Show Sign)" : "Normal User (Hide Sign)"}</span>
+          </label>
+
           <div style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
             <Users size={15} />
             {participants.length + 1} participant{participants.length !== 0 ? "s" : ""}
@@ -678,113 +680,120 @@ export default function MeetingRoomPage() {
         </div>
       </div>
 
-      {/* ---- Main Body (Grid on top, Caption panel on bottom) ---- */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
-        
-        {/* Video grid space */}
+      {/* ---- Main Body: Video & Controls (100% or 70%) | ASL Sign Panel (30% if Deaf) ---- */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "row", minHeight: 0, overflow: "hidden" }}>
+
+        {/* ---- Video grid + Control Bar ---- */}
         <div style={{
-          flex: 1, padding: "0.75rem 1rem", minHeight: 0, overflow: "hidden",
-          display: "flex", flexDirection: "column", justifyContent: "center"
+          width: isDeaf ? "70%" : "100%", display: "flex", flexDirection: "column",
+          minHeight: 0, overflow: "hidden", borderRight: isDeaf ? "1px solid var(--color-border)" : "none",
+          transition: "width 0.2s ease",
         }}>
+          {/* Video grid space */}
           <div style={{
-            display: "grid",
-            gridTemplateColumns: participants.length === 0
-              ? "1fr"
-              : participants.length === 1
-              ? "repeat(2, 1fr)"
-              : "repeat(auto-fit, minmax(260px, 1fr))",
-            gap: "0.75rem",
-            width: "100%",
-            maxHeight: "100%",
-            margin: "0 auto",
-            alignItems: "center",
+            flex: 1, padding: "0.75rem 1rem", minHeight: 0, overflow: "hidden",
+            display: "flex", flexDirection: "column", justifyContent: "center"
           }}>
-            <ParticipantTile
-              name={userName}
-              isMuted={isMuted}
-              isCameraOff={isCameraOff}
-              isSpeaking={localSpeaking}
-              isHost={isHost}
-              isSelf
-              stream={localStream}
-              currentCaption={localCaption}
-            />
-            {participants.map((p: RemoteParticipant) => (
-              <RemoteParticipantTile
-                key={p.user_id}
-                participant={p}
-                isHost={p.user_id === joinState.hostId}
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: participants.length === 0
+                ? "1fr"
+                : participants.length === 1
+                  ? "repeat(2, 1fr)"
+                  : "repeat(auto-fit, minmax(260px, 1fr))",
+              gap: "0.75rem",
+              width: "100%",
+              maxHeight: "100%",
+              margin: "0 auto",
+              alignItems: "center",
+            }}>
+              <ParticipantTile
+                name={userName}
+                isMuted={isMuted}
+                isCameraOff={isCameraOff}
+                isSpeaking={localSpeaking}
+                isHost={isHost}
+                isSelf
+                stream={localStream}
+                currentCaption={localCaption}
               />
-            ))}
+              {participants.map((p: RemoteParticipant) => (
+                <RemoteParticipantTile
+                  key={p.user_id}
+                  participant={p}
+                  isHost={p.user_id === joinState.hostId}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Control Bar embedded at bottom */}
+          <div style={{
+            flexShrink: 0,
+            display: "flex", justifyContent: "center", alignItems: "center",
+            gap: "1rem",
+            padding: "0.75rem 1.5rem",
+            background: "rgba(6,11,24,0.95)",
+            backdropFilter: "blur(12px)",
+            borderTop: "1px solid var(--color-border)",
+          }}>
+            <button
+              className={`ctrl-btn ${isMuted ? "ctrl-btn-off" : "ctrl-btn-on"}`}
+              onClick={toggleMute}
+              title={isMuted ? "Unmute Microphone" : "Mute Microphone"}
+            >
+              {isMuted ? <MicOff size={20} /> : <Mic size={20} />}
+            </button>
+
+            <button
+              className={`ctrl-btn ${isCameraOff ? "ctrl-btn-off" : "ctrl-btn-on"}`}
+              onClick={toggleCamera}
+              disabled={!hasCamera}
+              title={!hasCamera ? "No camera detected" : isCameraOff ? "Turn Camera On" : "Turn Camera Off"}
+              style={!hasCamera ? { opacity: 0.35, cursor: "not-allowed" } : undefined}
+            >
+              {isCameraOff ? <VideoOff size={20} /> : <Video size={20} />}
+            </button>
+
+            <button
+              className="ctrl-btn ctrl-btn-on"
+              onClick={restartCaptions}
+              title="Restart mic captions"
+              style={{
+                background: "rgba(255, 224, 51, 0.15)",
+                color: "var(--color-caption)",
+                borderColor: "rgba(255, 224, 51, 0.3)",
+              }}
+            >
+              <Captions size={20} />
+            </button>
+
+            <button
+              className="btn btn-danger btn-icon-lg"
+              onClick={leaveRoom}
+              title="Leave Meeting"
+              style={{ width: "3.25rem", height: "3.25rem" }}
+            >
+              <PhoneOff size={18} />
+            </button>
           </div>
         </div>
 
-        {/* Caption Panel space (28vh fixed height for clear readability) */}
-        <div style={{ height: "28vh", flexShrink: 0, overflow: "hidden" }}>
-          <CaptionPanel
-            participants={participants}
-            localUserName={userName}
-            localCaption={localCaption}
-            localHistory={localCaptionHistory}
-            signPlayback={signPlayback}
-            onSignPlaybackDone={clearSignPlayback}
-            onRestartCaptions={restartCaptions}
-            onSendManualCaption={sendManualCaption}
-          />
-        </div>
-      </div>
-
-      {/* ---- Control Bar ---- */}
-      <div style={{
-        flexShrink: 0,
-        display: "flex", justifyContent: "center", alignItems: "center",
-        gap: "1rem",
-        padding: "0.625rem 1.5rem",
-        background: "rgba(6,11,24,0.95)",
-        backdropFilter: "blur(12px)",
-        borderTop: "1px solid var(--color-border)",
-      }}>
-        <button
-          className={`ctrl-btn ${isMuted ? "ctrl-btn-off" : "ctrl-btn-on"}`}
-          onClick={toggleMute}
-          title={isMuted ? "Unmute Microphone" : "Mute Microphone"}
-        >
-          {isMuted ? <MicOff size={20} /> : <Mic size={20} />}
-        </button>
-
-        <button
-          className={`ctrl-btn ${isCameraOff ? "ctrl-btn-off" : "ctrl-btn-on"}`}
-          onClick={toggleCamera}
-          disabled={!hasCamera}
-          title={!hasCamera ? "No camera detected" : isCameraOff ? "Turn Camera On" : "Turn Camera Off"}
-          style={!hasCamera ? { opacity: 0.35, cursor: "not-allowed" } : undefined}
-        >
-          {isCameraOff ? <VideoOff size={20} /> : <Video size={20} />}
-        </button>
-
-        {/* Captions are always on server-side — this button just restarts
-            the connection if it silently drops. */}
-        <button
-          className="ctrl-btn ctrl-btn-on"
-          onClick={restartCaptions}
-          title="Restart captions"
-          style={{
-            background: "rgba(255, 224, 51, 0.15)",
-            color: "var(--color-caption)",
-            borderColor: "rgba(255, 224, 51, 0.3)",
-          }}
-        >
-          <Captions size={20} />
-        </button>
-
-        <button
-          className="btn btn-danger btn-icon-lg"
-          onClick={leaveRoom}
-          title="Leave Meeting"
-          style={{ width: "3.25rem", height: "3.25rem" }}
-        >
-          <PhoneOff size={18} />
-        </button>
+        {/* ---- ASL Sign Language Panel (Only shown if Deaf User) ---- */}
+        {isDeaf && (
+          <div style={{ width: "30%", height: "100%", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+            <CaptionPanel
+              participants={participants}
+              localUserName={userName}
+              localCaption={localCaption}
+              localHistory={localCaptionHistory}
+              signPlayback={signPlayback}
+              onSignPlaybackDone={clearSignPlayback}
+              onRestartCaptions={restartCaptions}
+              onSendManualCaption={sendManualCaption}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

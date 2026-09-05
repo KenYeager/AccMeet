@@ -13,7 +13,7 @@ function getInitials(name: string) {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { userId, userName, setUserName, isReady } = useIdentity();
+  const { userId, userName, setUserName, isDeaf, setIsDeaf, isReady } = useIdentity();
   const [nameInput, setNameInput] = useState("");
   const [isEditingName, setIsEditingName] = useState(false);
   const [joinCode, setJoinCode] = useState("");
@@ -52,7 +52,7 @@ export default function DashboardPage() {
             </div>
             <h1 style={{ fontSize: "1.75rem", fontWeight: 800 }}>Welcome to DeafMeet</h1>
             <p style={{ color: "var(--color-text-secondary)", marginTop: "0.5rem", fontSize: "1rem" }}>
-              Video meetings with real-time captions, designed for deaf users.
+              Video meetings with real-time captions & sign language.
             </p>
           </div>
           <div className="glass-card" style={{ padding: "2rem" }}>
@@ -71,6 +71,34 @@ export default function DashboardPage() {
                 maxLength={50}
                 style={{ fontSize: "1.125rem" }}
               />
+
+              <label style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.75rem",
+                padding: "0.75rem 1rem",
+                borderRadius: "0.625rem",
+                background: "rgba(15, 23, 42, 0.6)",
+                border: "1px solid rgba(255, 224, 51, 0.2)",
+                cursor: "pointer",
+                userSelect: "none"
+              }}>
+                <input
+                  type="checkbox"
+                  checked={isDeaf}
+                  onChange={e => setIsDeaf(e.target.checked)}
+                  style={{ width: "1.25rem", height: "1.25rem", accentColor: "#ffd000", cursor: "pointer" }}
+                />
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: "0.9375rem", color: "var(--color-caption)" }}>
+                    I am Deaf / Hard of Hearing
+                  </div>
+                  <div style={{ fontSize: "0.8125rem", color: "var(--color-text-secondary)" }}>
+                    {isDeaf ? "Show ASL Sign Language conversion" : "Normal user (Hide Sign Language)"}
+                  </div>
+                </div>
+              </label>
+
               <button id="name-continue-btn" type="submit" className="btn btn-primary" style={{ padding: "0.875rem" }}>
                 Continue
               </button>
@@ -80,6 +108,7 @@ export default function DashboardPage() {
       </div>
     );
   }
+
 
   const handleCreateMeeting = async () => {
     setIsCreating(true);
