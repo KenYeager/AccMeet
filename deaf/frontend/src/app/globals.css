@@ -1,0 +1,420 @@
+/* ==========================================================
+   DeafMeet — Accessible Design System
+   Primary palette: Deep navy + High-contrast yellow for captions
+   ========================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* ---------- Design tokens ---------- */
+:root {
+  /* Navy background scale */
+  --color-navy-950: #060b18;
+  --color-navy-900: #0a1020;
+  --color-navy-800: #0f1a30;
+  --color-navy-700: #162040;
+  --color-navy-600: #1e2d55;
+
+  /* Caption yellow — high contrast, AAA-level readable */
+  --color-caption: #ffe033;
+  --color-caption-dim: #ffd000;
+  --color-caption-bg: rgba(0, 0, 0, 0.85);
+
+  /* Accent blue for UI */
+  --color-blue-400: #60a5fa;
+  --color-blue-500: #3b82f6;
+  --color-blue-600: #2563eb;
+
+  /* Semantic */
+  --color-success: #22c55e;
+  --color-danger: #ef4444;
+  --color-warning: #f59e0b;
+  --color-info: #38bdf8;
+
+  /* Text scale */
+  --color-text-primary: #f0f4ff;
+  --color-text-secondary: #8da0cc;
+  --color-text-muted: #4e6080;
+
+  /* Surfaces */
+  --color-surface: rgba(15, 26, 48, 0.85);
+  --color-surface-hover: rgba(22, 32, 64, 0.95);
+  --color-border: rgba(96, 165, 250, 0.15);
+
+  /* Shadows */
+  --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.5);
+  --shadow-caption: 0 -4px 32px rgba(255, 224, 51, 0.08);
+
+  /* Caption panel sizing */
+  --caption-font-size: 1.25rem;
+  --caption-history-font-size: 1.05rem;
+}
+
+/* ---------- Reset & Base ---------- */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--color-navy-950);
+  color: var(--color-text-primary);
+  min-height: 100vh;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  /* Animated grain background */
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(37, 99, 235, 0.15) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 80%, rgba(99, 102, 241, 0.08) 0%, transparent 50%);
+  background-attachment: fixed;
+}
+
+/* ---------- Typography ---------- */
+h1, h2, h3, h4 {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+a {
+  color: var(--color-blue-400);
+  text-decoration: none;
+}
+a:hover { text-decoration: underline; }
+
+/* ---------- Layout utilities ---------- */
+.page-center {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.container-lg {
+  max-width: 72rem;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.container-sm {
+  max-width: 28rem;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* ---------- Glass card ---------- */
+.glass-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 1.25rem;
+  backdrop-filter: blur(16px);
+  box-shadow: var(--shadow-card);
+}
+
+/* ---------- Inputs ---------- */
+.input {
+  width: 100%;
+  background: rgba(6, 11, 24, 0.7);
+  border: 1.5px solid var(--color-border);
+  border-radius: 0.75rem;
+  padding: 0.75rem 1rem;
+  color: var(--color-text-primary);
+  font-family: inherit;
+  font-size: 1rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.input:focus {
+  border-color: var(--color-blue-400);
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.15);
+}
+.input::placeholder {
+  color: var(--color-text-muted);
+}
+
+/* ---------- Buttons ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: none;
+  border-radius: 0.75rem;
+  font-family: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.625rem 1.25rem;
+  transition: all 0.15s ease;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--color-blue-500), #6366f1);
+  color: white;
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+}
+.btn-primary:hover:not(:disabled) {
+  box-shadow: 0 0 28px rgba(59, 130, 246, 0.5);
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background: rgba(96, 165, 250, 0.1);
+  color: var(--color-blue-400);
+  border: 1.5px solid rgba(96, 165, 250, 0.25);
+}
+.btn-secondary:hover:not(:disabled) {
+  background: rgba(96, 165, 250, 0.18);
+  border-color: rgba(96, 165, 250, 0.45);
+}
+
+.btn-danger {
+  background: linear-gradient(135deg, #dc2626, #991b1b);
+  color: white;
+  box-shadow: 0 0 16px rgba(239, 68, 68, 0.3);
+}
+.btn-danger:hover:not(:disabled) {
+  box-shadow: 0 0 24px rgba(239, 68, 68, 0.5);
+  transform: translateY(-1px);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--color-text-secondary);
+  border: 1px solid transparent;
+}
+.btn-ghost:hover:not(:disabled) {
+  background: rgba(255,255,255,0.05);
+  color: var(--color-text-primary);
+}
+
+.btn-icon-lg {
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 50%;
+  padding: 0;
+}
+
+/* ---------- Meeting control buttons ---------- */
+.ctrl-btn {
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  font-size: 0;
+}
+.ctrl-btn-on {
+  background: rgba(96, 165, 250, 0.15);
+  color: var(--color-blue-400);
+  border: 1.5px solid rgba(96, 165, 250, 0.3);
+}
+.ctrl-btn-on:hover:not(:disabled) {
+  background: rgba(96, 165, 250, 0.25);
+  transform: translateY(-1px);
+}
+.ctrl-btn-off {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--color-danger);
+  border: 1.5px solid rgba(239, 68, 68, 0.3);
+}
+.ctrl-btn-off:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.25);
+  transform: translateY(-1px);
+}
+.ctrl-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ---------- Avatar ---------- */
+.avatar {
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #2563eb, #6366f1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.875rem;
+  color: white;
+  flex-shrink: 0;
+  letter-spacing: 0.03em;
+}
+.avatar-lg {
+  width: 4rem;
+  height: 4rem;
+  font-size: 1.25rem;
+}
+.avatar-xl {
+  width: 5.5rem;
+  height: 5.5rem;
+  font-size: 1.75rem;
+}
+
+/* ---------- Meeting code badge ---------- */
+.meeting-code-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  padding: 0.5rem 1rem;
+  border-radius: 0.625rem;
+  background: rgba(96, 165, 250, 0.08);
+  border: 1px solid rgba(96, 165, 250, 0.25);
+  color: var(--color-blue-400);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.meeting-code-badge:hover {
+  background: rgba(96, 165, 250, 0.14);
+}
+
+/* ---------- Status dots ---------- */
+.status-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+.status-dot-green { background: var(--color-success); box-shadow: 0 0 6px var(--color-success); }
+.status-dot-yellow { background: var(--color-warning); animation: pulse-dot 1.5s ease-in-out infinite; }
+.status-dot-red { background: var(--color-danger); }
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* ---------- Participant card ---------- */
+.participant-card {
+  border-radius: 1rem;
+  overflow: hidden;
+  transition: box-shadow 0.2s ease;
+  background: var(--color-navy-800);
+}
+
+/* ---------- Caption panel (the star of the show) ---------- */
+.caption-panel {
+  background: var(--color-caption-bg);
+  border-top: 2px solid rgba(255, 224, 51, 0.3);
+  backdrop-filter: blur(20px);
+  box-shadow: var(--shadow-caption);
+}
+
+.caption-history {
+  overflow-y: auto;
+  scroll-behavior: smooth;
+}
+
+/* Scrollbar styling for caption history */
+.caption-history::-webkit-scrollbar {
+  width: 4px;
+}
+.caption-history::-webkit-scrollbar-track {
+  background: transparent;
+}
+.caption-history::-webkit-scrollbar-thumb {
+  background: rgba(255, 224, 51, 0.2);
+  border-radius: 2px;
+}
+.caption-history::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 224, 51, 0.4);
+}
+
+.caption-speaker {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--color-caption);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.8;
+}
+
+.caption-text-live {
+  font-size: var(--caption-font-size);
+  font-weight: 600;
+  color: white;
+  line-height: 1.5;
+}
+
+.caption-text-interim {
+  color: rgba(255, 255, 255, 0.6);
+  font-style: italic;
+}
+
+.caption-text-final {
+  color: white;
+}
+
+.caption-entry-row {
+  padding: 0.5rem 1.5rem;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  transition: background 0.15s;
+}
+.caption-entry-row:hover {
+  background: rgba(255,255,255,0.02);
+}
+
+/* Live caption current line — bold, yellow-border left accent */
+.caption-live-bar {
+  border-left: 3px solid var(--color-caption);
+  background: rgba(255, 224, 51, 0.05);
+}
+
+/* ---------- Animations ---------- */
+.fade-in {
+  animation: fadeIn 0.3s ease forwards;
+}
+.fade-in-delay-1 { animation-delay: 0.08s; opacity: 0; animation-fill-mode: both; }
+.fade-in-delay-2 { animation-delay: 0.16s; opacity: 0; animation-fill-mode: both; }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Speaking ring around video tile */
+.speaking-ring {
+  box-shadow: 0 0 0 3px var(--color-caption), 0 0 20px rgba(255,224,51,0.3), var(--shadow-card) !important;
+}
+
+/* ---------- Dashboard layout ---------- */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.25rem;
+}
