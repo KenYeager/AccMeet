@@ -300,14 +300,14 @@ export default function MeetingRoomPage() {
     ? { user_id: participants[0].user_id, user_name: participants[0].user_name }
     : null;
 
-  const conversationMemory = useConversationMemory(meetingCode, isPatient, webrtcUserId, otherParticipant, sendCaregiverTip);
+  const conversationMemory = useConversationMemory(meetingCode, isPatient, webrtcUserId, userName, otherParticipant, sendCaregiverTip);
   useEffect(() => {
     conversationMemoryRef.current = conversationMemory;
   }, [conversationMemory]);
 
   // Runs for every participant (not just the patient) — the automated
   // LangGraph orchestrator replacing the old manual ingest/retrieve toggles.
-  const ragOrchestrator = useRagOrchestrator(isPatient, webrtcUserId);
+  const ragOrchestrator = useRagOrchestrator(isPatient, webrtcUserId, meetingCode, otherParticipant);
   useEffect(() => {
     ragOrchestratorRef.current = ragOrchestrator;
   }, [ragOrchestrator]);

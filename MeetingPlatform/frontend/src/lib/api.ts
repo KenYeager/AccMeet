@@ -6,6 +6,7 @@ import type {
   RagQueryResponse,
   ConversationChunkResponse,
   ConversationHistoryEntry,
+  InsightsReport,
 } from "@/types";
 
 const API_BASE = "/api"; // Proxied by Next.js rewrites to backend
@@ -95,10 +96,24 @@ export const rag = {
 // calendar event. See rag/backend/graph.py.
 // =========================================================
 export const orchestrator = {
-  process: (text: string, isPatient: boolean) =>
+  // `call` identifies which conversation this chunk belongs to, so the
+  // log_speech_observation tool can attach what it notices to the right call
+  // record. Omitted by non-patient clients, which record nothing.
+  process: (
+    text: string,
+    isPatient: boolean,
+    call?: { patientId: string; otherId: string; otherName: string; meetingCode: string },
+  ) =>
     request<RagQueryResponse & { actions: { tool: string; result: string }[] }>("/rag/orchestrate", {
       method: "POST",
-      body: JSON.stringify({ text, is_patient: isPatient }),
+      body: JSON.stringify({
+        text,
+        is_patient: isPatient,
+        patient_id: call?.patientId,
+        other_id: call?.otherId,
+        other_name: call?.otherName,
+        meeting_code: call?.meetingCode,
+      }),
     }),
 };
 
@@ -108,11 +123,12 @@ export const orchestrator = {
 // file storage (not a database — see conversation_memory.py).
 // =========================================================
 export const conversation = {
-  sendChunk: (patientId: string, otherId: string, otherName: string, meetingCode: string, text: string) =>
+  sendChunk: (patientId: string, otherId: string, otherName: string, meetingCode: string, text: string, patientName?: string) =>
     request<ConversationChunkResponse>("/conversation/chunk", {
       method: "POST",
       body: JSON.stringify({
         patient_id: patientId,
+        patient_name: patientName,
         other_id: otherId,
         other_name: otherName,
         meeting_code: meetingCode,
@@ -134,6 +150,17 @@ export const conversation = {
   getHistory: (patientId: string, otherId: string, otherName: string) =>
     request<{ entries: ConversationHistoryEntry[] }>(
       `/conversation/history?patient_id=${encodeURIComponent(patientId)}&other_id=${encodeURIComponent(otherId)}&other_name=${encodeURIComponent(otherName)}`
+    ),
+};
+
+// =========================================================
+// Speech insights — the caregiver-only report. Surfaced only on
+// a non-patient device (see app/insights/page.tsx).
+// =========================================================
+export const insights = {
+  getReport: (patientId: string, otherId: string, otherName: string) =>
+    request<InsightsReport>(
+      `/conversation/insights?patient_id=${encodeURIComponent(patientId)}&other_id=${encodeURIComponent(otherId)}&other_name=${encodeURIComponent(otherName)}`
     ),
 };
 

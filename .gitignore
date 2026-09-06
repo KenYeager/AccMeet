@@ -109,7 +109,7 @@ dump/
 # ==========================================
 /app.py
 /MeetingPlatform/architecture-v1.png
-/MeetingPlatform/Plans/planv1.md
+/MeetingPlatform/Plans/
 
 # ==========================================
 # Per-person conversation history (sensitive — never commit)

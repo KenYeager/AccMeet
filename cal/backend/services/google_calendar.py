@@ -27,7 +27,16 @@ from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 
 from db import load_token, save_token, token_exists
-from models.event import EventCreate, EventResult
+from models.event import EventCreate, EventResult, RecurrenceFrequency
+
+# Google Calendar's recurrence field is a list of RRULE strings (RFC 5545).
+# Building it here, in the one place that actually talks to the API, keeps
+# an LLM tool call from ever needing to produce RRULE syntax itself.
+_RRULE_BY_FREQUENCY: dict[str, str] = {
+    "daily": "RRULE:FREQ=DAILY",
+    "weekly": "RRULE:FREQ=WEEKLY",
+    "monthly": "RRULE:FREQ=MONTHLY",
+}
 
 load_dotenv()
 
@@ -197,6 +206,11 @@ async def create_calendar_event(user_id: str, event_data: EventCreate) -> EventR
         event_body["description"] = event_data.description
     if event_data.location:
         event_body["location"] = event_data.location
+    # Omitted entirely (not an empty list) when there's no recurrence, so a
+    # one-time event's request body is byte-identical to before this field
+    # existed — no behavior change for the existing non-recurring path.
+    if event_data.recurrence:
+        event_body["recurrence"] = [_RRULE_BY_FREQUENCY[event_data.recurrence]]
 
     try:
         created = service.events().insert(calendarId="primary", body=event_body).execute()
@@ -209,4 +223,5 @@ async def create_calendar_event(user_id: str, event_data: EventCreate) -> EventR
         start=created["start"].get("dateTime", created["start"].get("date", "")),
         end=created["end"].get("dateTime", created["end"].get("date", "")),
         calendar_url=created.get("htmlLink", "https://calendar.google.com"),
+        recurrence=event_data.recurrence,
     )

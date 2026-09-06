@@ -19,11 +19,20 @@ const CHUNK_INTERVAL_MS = 30_000;
  * buffers only this client's own speech for the global lore store. They
  * happen to share a cadence but serve unrelated concerns.
  */
-export function useRagOrchestrator(isPatient: boolean, currentUserId: string | undefined) {
+export function useRagOrchestrator(
+  isPatient: boolean,
+  currentUserId: string | undefined,
+  meetingCode?: string,
+  otherParticipant?: { user_id: string; user_name: string } | null,
+) {
   const [hudCard, setHudCard] = useState<RagQueryResponse | null>(null);
   const [hudLoading, setHudLoading] = useState(false);
 
   const bufferRef = useRef<string[]>([]);
+  // Read from a ref inside the interval so the other participant arriving
+  // mid-call doesn't tear down and restart the 30s timer.
+  const otherRef = useRef(otherParticipant);
+  useEffect(() => { otherRef.current = otherParticipant; }, [otherParticipant]);
 
   // Called from useWebRTC's onFinalCaption for EVERY final caption (local or
   // peer) — only buffers when it's this client's own speech, so nobody ever
@@ -41,8 +50,18 @@ export function useRagOrchestrator(isPatient: boolean, currentUserId: string | u
       const text = bufferRef.current.join("\n");
       bufferRef.current = [];
 
+      const other = otherRef.current;
+      const call = isPatient && meetingCode && other && currentUserId
+        ? {
+            patientId: currentUserId,
+            otherId: other.user_id,
+            otherName: other.user_name,
+            meetingCode,
+          }
+        : undefined;
+
       setHudLoading(true);
-      orchestrator.process(text, isPatient)
+      orchestrator.process(text, isPatient, call)
         .then(result => {
           if (result.hud_triggered) setHudCard(result);
         })
@@ -53,7 +72,7 @@ export function useRagOrchestrator(isPatient: boolean, currentUserId: string | u
     }, CHUNK_INTERVAL_MS);
 
     return () => clearInterval(interval);
-  }, [currentUserId, isPatient]);
+  }, [currentUserId, isPatient, meetingCode]);
 
   const dismissHud = useCallback(() => setHudCard(null), []);
 

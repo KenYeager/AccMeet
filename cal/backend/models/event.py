@@ -9,9 +9,16 @@ These models define the contract for:
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
+
+# A closed set rather than a free-form RRULE string: the caller (an LLM tool
+# call, ultimately) only ever needs to express "repeats every day/week/month",
+# and generating raw RRULE syntax is an easy place for a model to make a
+# subtly-wrong string that silently creates the wrong recurrence. Mapping
+# happens once, in one place (google_calendar.py's _RRULE_BY_FREQUENCY).
+RecurrenceFrequency = Literal["daily", "weekly", "monthly"]
 
 
 # ── Request ───────────────────────────────────────────────────────────────────
@@ -28,6 +35,11 @@ class EventCreate(BaseModel):
     end: datetime = Field(..., description="End datetime (ISO 8601 with timezone)")
     description: Optional[str] = Field(None, description="Optional event body / notes")
     location: Optional[str] = Field(None, description="Optional physical or virtual location")
+    recurrence: Optional[RecurrenceFrequency] = Field(
+        None,
+        description="Set when the event repeats — omit entirely for a one-time event. "
+        "The first occurrence is still `start`/`end`; this only controls repetition after that.",
+    )
 
 
 # ── Response ──────────────────────────────────────────────────────────────────
@@ -39,6 +51,9 @@ class EventResult(BaseModel):
     start: str
     end: str
     calendar_url: str = Field(..., description="Link to open the event in Google Calendar")
+    recurrence: Optional[RecurrenceFrequency] = Field(
+        None, description="Echoes the recurrence that was actually applied, if any."
+    )
 
 
 class CreateEventResponse(BaseModel):

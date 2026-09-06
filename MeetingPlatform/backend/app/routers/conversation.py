@@ -11,6 +11,7 @@ router = APIRouter()
 
 class ConversationChunkRequest(BaseModel):
     patient_id: str
+    patient_name: str | None = None
     other_id: str
     other_name: str
     meeting_code: str
@@ -39,7 +40,8 @@ async def _call(coro: Coroutine[Any, Any, dict]) -> dict:
 @router.post("/chunk")
 async def chunk(body: ConversationChunkRequest) -> dict:
     return await _call(rag_service.send_conversation_chunk(
-        body.patient_id, body.other_id, body.other_name, body.meeting_code, body.text
+        body.patient_id, body.other_id, body.other_name, body.meeting_code, body.text,
+        body.patient_name,
     ))
 
 
@@ -53,3 +55,15 @@ async def finalize(body: ConversationFinalizeRequest) -> dict:
 @router.get("/history")
 async def history(patient_id: str, other_id: str, other_name: str) -> dict:
     return await _call(rag_service.get_conversation_history(patient_id, other_id, other_name))
+
+
+@router.get("/insights")
+async def insights(patient_id: str, other_id: str, other_name: str) -> dict:
+    """Caregiver-only speech report. Not gated here — the app has no auth at
+    all — but the frontend only surfaces it on a non-patient device."""
+    return await _call(rag_service.get_insights_report(patient_id, other_id, other_name))
+
+
+@router.get("/insights/contacts")
+async def insights_contacts(other_id: str) -> dict:
+    return await _call(rag_service.get_insights_contacts(other_id))

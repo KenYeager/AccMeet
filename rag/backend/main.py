@@ -13,6 +13,8 @@ from scheduling_graph import check_and_schedule
 from conversation_memory import (
     summarize_chunk, get_session_summary, finalize_session, read_history, sweep_abandoned,
 )
+from report import build_report, list_contacts
+from tools import current_call
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -40,9 +42,17 @@ class TranscriptInput(BaseModel):
 class OrchestrateRequest(BaseModel):
     text: str
     is_patient: bool = False
+    # Identifies which call this chunk belongs to, so log_speech_observation can
+    # attach what it notices to the right call record. Optional: a non-patient
+    # client sends none, and the tool then simply records nothing.
+    patient_id: str | None = None
+    other_id: str | None = None
+    other_name: str | None = None
+    meeting_code: str | None = None
 
 class ConversationChunkRequest(BaseModel):
     patient_id: str
+    patient_name: str | None = None
     other_id: str
     other_name: str
     meeting_code: str
@@ -137,6 +147,19 @@ async def orchestrate(payload: OrchestrateRequest):
     and/or (patient-only) rag_context_lookup — any combination, or nothing."""
     try:
         app_to_use = patient_agent_app if payload.is_patient else general_agent_app
+
+        # Tools only receive the arguments the model chose, so which call we're
+        # in has to travel out of band — see tools.current_call.
+        if payload.is_patient and payload.patient_id and payload.other_id and payload.meeting_code:
+            current_call.set({
+                "patient_id": payload.patient_id,
+                "other_id": payload.other_id,
+                "other_name": payload.other_name or "them",
+                "meeting_code": payload.meeting_code,
+            })
+        else:
+            current_call.set(None)
+
         final_state = await app_to_use.ainvoke({"messages": [HumanMessage(content=payload.text)]})
         messages = final_state["messages"]
 
@@ -175,7 +198,7 @@ async def conversation_chunk(payload: ConversationChunkRequest):
     try:
         result = await summarize_chunk(
             payload.patient_id, payload.other_id, payload.other_name,
-            payload.meeting_code, payload.text,
+            payload.meeting_code, payload.text, payload.patient_name,
         )
         return {
             "current_context": result.current_context,
@@ -208,6 +231,29 @@ async def conversation_history(patient_id: str, other_id: str, other_name: str):
         return {"entries": read_history(patient_id, other_id, other_name)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/insights/report")
+async def insights_report(patient_id: str, other_id: str, other_name: str):
+    """Caregiver-facing speech report for one patient/contact pair. Reads only
+    the derived per-call numbers — no transcript is stored to read."""
+    try:
+        # Recover any call that ended without finalizing, so its metrics are
+        # included rather than sitting unprocessed (same reason as history).
+        await sweep_abandoned(patient_id, other_id, other_name)
+        return await build_report(patient_id, other_id, other_name)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/insights/contacts")
+async def insights_contacts(other_id: str):
+    """Patients this caregiver has recorded calls with, so their device can
+    offer a list rather than requiring ids to be typed in."""
+    try:
+        return {"contacts": list_contacts(other_id)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 if __name__ == "__main__":
     import uvicorn

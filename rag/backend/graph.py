@@ -12,7 +12,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage
 
 from calendar_tool import schedule_calendar_event
-from tools import rag_context_lookup, store_lore
+from tools import rag_context_lookup, store_lore, log_speech_observation
 
 load_dotenv()
 
@@ -29,6 +29,11 @@ LOOKUP_INSTRUCTIONS = (
     "that the listener — a memory-care patient — may need background on to follow the "
     "conversation. Keep the returned summary short and reassuring; it appears as an "
     "on-screen reminder card.\n\n"
+    "- `log_speech_observation`: call this ONLY when the patient visibly struggles with the "
+    "MECHANICS of speaking — searching for a common word and describing it instead ('the "
+    "thing you boil water in'), losing the thread mid-sentence, or being confused about the "
+    "day or place. This is about HOW they spoke, never what they discussed. Ordinary pauses, "
+    "ordinary self-correction and changing the subject are NOT worth logging.\n\n"
 )
 
 
@@ -69,7 +74,15 @@ def _build_graph(tools: list, lookup_instructions: str):
             "  Positive example (call the tool): \"let's meet next Tuesday at 3pm to review the deck\".\n"
             "  Negative examples (do NOT call the tool): \"we should really sync up sometime\" (too "
             "vague), \"the meeting yesterday went well\" (past tense, not a commitment), general "
-            "chit-chat.\n\n"
+            "chit-chat.\n"
+            "  If the commitment explicitly repeats, also set `recurrence` to \"daily\", \"weekly\", "
+            "or \"monthly\" — `start`/`end` still give the FIRST occurrence's time.\n"
+            "  Recurring example: \"remind me to take my medication every day at 7pm\" -> "
+            "start=<today or tomorrow at 19:00>, recurrence=\"daily\".\n"
+            "  Non-recurring example: \"let's meet next Tuesday at 3pm\" -> no `recurrence` — a "
+            "single mention of a day is NOT recurring just because that day name repeats weekly on "
+            "a calendar; only set it when the person actually said \"every\"/\"each\"/\"daily\"/"
+            "\"weekly\" or equivalent.\n\n"
             + lookup_instructions +
             "If nothing in this chunk warrants any tool call, respond with the single word "
             "NO_ACTION and call no tools. Keep any other response concise — this may appear as an "
@@ -90,7 +103,10 @@ def _build_graph(tools: list, lookup_instructions: str):
 
 # Two fixed toolsets, compiled once at import time.
 general_agent_app = _build_graph([store_lore, schedule_calendar_event], "")
-patient_agent_app = _build_graph([rag_context_lookup, store_lore, schedule_calendar_event], LOOKUP_INSTRUCTIONS)
+patient_agent_app = _build_graph(
+    [rag_context_lookup, store_lore, schedule_calendar_event, log_speech_observation],
+    LOOKUP_INSTRUCTIONS,
+)
 
 # Kept for backwards compatibility with the old /api/agent/process-chunk
 # endpoint, which is left in place (unused by the new automatic flow, but

@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Mic, Plus, ArrowRight, Loader2, Pencil, Check, HeartPulse } from "lucide-react";
+import { Mic, Plus, ArrowRight, Loader2, Pencil, Check, HeartPulse, Activity } from "lucide-react";
+import Link from "next/link";
 import { useIdentity } from "@/hooks/useIdentity";
 import { meetings, ApiError } from "@/lib/api";
 import toast from "react-hot-toast";
@@ -207,6 +208,30 @@ export default function DashboardPage() {
             Start a new meeting or join one with a code.
           </p>
         </div>
+
+        {/* Caregiver-only: never linked on the patient's own device, since the
+            report is about them and written for their family. */}
+        {!isPatientDevice && (
+          <Link
+            href="/insights"
+            className="glass-card fade-in"
+            style={{
+              display: "flex", alignItems: "center", gap: "1rem", padding: "1.25rem 1.5rem",
+              marginBottom: "1.5rem", textDecoration: "none", color: "inherit",
+            }}
+          >
+            <Activity size={24} color="var(--color-blue-400)" style={{ flexShrink: 0 }} />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: "var(--fs-lead)", fontWeight: 600, marginBottom: "0.125rem" }}>
+                Conversation insights
+              </div>
+              <div style={{ fontSize: "var(--fs-body)", color: "var(--color-text-secondary)" }}>
+                How your calls have been going, and anything worth raising with their doctor.
+              </div>
+            </div>
+            <ArrowRight size={20} color="var(--color-text-secondary)" style={{ flexShrink: 0 }} />
+          </Link>
+        )}
 
         {/* Device-level setting (persisted, not per-meeting) — "this device
             belongs to a memory-care patient" so every meeting it creates or

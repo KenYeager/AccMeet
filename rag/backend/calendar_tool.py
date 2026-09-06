@@ -1,10 +1,12 @@
 import os
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Literal, Optional
 
 import httpx
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
+
+RecurrenceFrequency = Literal["daily", "weekly", "monthly"]
 
 CAL_SERVICE_URL = os.getenv("CAL_SERVICE_URL", "http://localhost:8002")
 CAL_USER_ID = os.getenv("CAL_USER_ID", "")
@@ -20,6 +22,12 @@ class ScheduleEventInput(BaseModel):
     )
     description: Optional[str] = Field(default=None, description="Optional event notes.")
     location: Optional[str] = Field(default=None, description="Optional physical or virtual location.")
+    recurrence: Optional[RecurrenceFrequency] = Field(
+        default=None,
+        description="Set ONLY when the commitment is explicitly repeating — 'every day', "
+        "'each week', 'every month'. Omit entirely for a one-time commitment, even one on a "
+        "recurring-sounding day like 'every Tuesday' if only ONE Tuesday was actually meant.",
+    )
 
 
 @tool("schedule_calendar_event", args_schema=ScheduleEventInput)
@@ -29,8 +37,10 @@ async def schedule_calendar_event(
     end: Optional[datetime] = None,
     description: Optional[str] = None,
     location: Optional[str] = None,
+    recurrence: Optional[RecurrenceFrequency] = None,
 ) -> str:
-    """Creates a Google Calendar event for an explicit, unambiguous meeting/date commitment."""
+    """Creates a Google Calendar event for an explicit, unambiguous meeting/date commitment.
+    Set `recurrence` when the commitment explicitly repeats (daily/weekly/monthly)."""
     if not CAL_USER_ID:
         return "Google Calendar not connected (CAL_USER_ID is unset in rag/backend/.env) — event NOT created."
 
@@ -45,6 +55,8 @@ async def schedule_calendar_event(
         body["description"] = description
     if location:
         body["location"] = location
+    if recurrence:
+        body["recurrence"] = recurrence
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -63,4 +75,5 @@ async def schedule_calendar_event(
 
     data = response.json()
     calendar_url = data.get("event", {}).get("calendar_url", "")
-    return f"Event '{title}' created: {calendar_url}"
+    repeats = f" (repeats {recurrence})" if recurrence else ""
+    return f"Event '{title}' created{repeats}: {calendar_url}"

@@ -24,6 +24,7 @@ export function useConversationMemory(
   meetingCode: string,
   isPatient: boolean,
   patientId: string | undefined,
+  patientName: string | undefined,
   otherParticipant: OtherParticipant | null,
   // Relays a detected repeated-question tip to the other participant's
   // socket, targeted by their user_id — see useWebRTC's sendCaregiverTip.
@@ -63,7 +64,7 @@ export function useConversationMemory(
       const text = bufferRef.current.join("\n");
       bufferRef.current = [];
 
-      conversation.sendChunk(patientId, other.user_id, other.user_name, meetingCode, text)
+      conversation.sendChunk(patientId, other.user_id, other.user_name, meetingCode, text, patientName)
         .then(result => {
           setCurrentContext(result.current_context);
           setSessionSummary(result.session_summary);
@@ -77,7 +78,7 @@ export function useConversationMemory(
     }, CHUNK_INTERVAL_MS);
 
     return () => clearInterval(interval);
-  }, [isPatient, patientId, meetingCode, sendCaregiverTip]);
+  }, [isPatient, patientId, patientName, meetingCode, sendCaregiverTip]);
 
   // Called before leaving the call — condenses this session's lines into a
   // paragraph and appends it to the persistent per-dyad file. See the

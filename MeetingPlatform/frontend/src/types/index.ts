@@ -150,3 +150,43 @@ export interface ConversationHistoryEntry {
   timestamp: string;
   summary: string;
 }
+
+// =========================================================
+// Speech insights — caregiver-only report derived from each
+// call. Only numbers are ever stored; no transcript exists.
+// See rag/backend/speech_metrics.py and report.py.
+// =========================================================
+
+export interface CallMetrics {
+  timestamp: string;
+  meeting_code: string;
+  other_name: string;
+  chunks: number;
+  word_count: number;
+  repetition_count: number;
+  pronoun_rate: number | null;
+  filler_rate: number | null;
+  words_per_utterance: number | null;
+  lexical_diversity: number | null;
+  observations: string[];
+}
+
+export interface MetricChange {
+  metric: string;
+  label: string;
+  current: number;
+  baseline: number;
+  direction: "up" | "down";
+  percent?: number;
+  notable: boolean;
+}
+
+export interface InsightsReport {
+  status: "no_data" | "building_baseline" | "ready";
+  message?: string;
+  summary?: string;
+  latest?: CallMetrics;
+  changes: MetricChange[];
+  calls: CallMetrics[];
+  call_count: number;
+}

@@ -26,6 +26,12 @@ class RagQueryRequest(BaseModel):
 class OrchestrateRequest(BaseModel):
     text: str
     is_patient: bool = False
+    # Which call this chunk belongs to — lets rag's log_speech_observation tool
+    # attach observations to the right call record. Absent for non-patients.
+    patient_id: str | None = None
+    other_id: str | None = None
+    other_name: str | None = None
+    meeting_code: str | None = None
 
 
 async def _call(coro: Coroutine[Any, Any, dict]) -> dict:
@@ -54,4 +60,4 @@ async def query(body: RagQueryRequest) -> dict:
 
 @router.post("/orchestrate")
 async def orchestrate(body: OrchestrateRequest) -> dict:
-    return await _call(rag_service.orchestrate(body.text, body.is_patient))
+    return await _call(rag_service.orchestrate(body.model_dump()))
